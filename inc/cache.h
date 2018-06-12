@@ -95,6 +95,12 @@ class CACHE : public MEMORY {
              pf_useful,
              pf_useless,
              pf_fill;
+    
+    // reuse distance stats
+    uint64_t total_access_count;   // total demand accesses to the cache
+    uint64_t *set_access_count;    // number of times a set is accessed
+    uint64_t *set_reuse_distance;  // sum of all reuse distances of a set
+    uint64_t *set_last_access;     // total_access_count value the last time a set was accessed
 
     // queues
     PACKET_QUEUE WQ{NAME + "_WQ", WQ_SIZE}, // write queue
@@ -151,6 +157,16 @@ class CACHE : public MEMORY {
         pf_useful = 0;
         pf_useless = 0;
         pf_fill = 0;
+
+        total_access_count = 0;
+        set_access_count = new uint64_t[NUM_SET];
+        set_reuse_distance = new uint64_t[NUM_SET];
+        set_last_access = new uint64_t[NUM_SET];
+        for (uint32_t set = 0; set < NUM_SET; set++) {
+            set_access_count[set] = 0;
+            set_reuse_distance[set] = 0;
+            set_last_access[set] = 0;
+        }
     };
 
     // destructor
@@ -158,6 +174,9 @@ class CACHE : public MEMORY {
         for (uint32_t i=0; i<NUM_SET; i++)
             delete[] block[i];
         delete[] block;
+        delete[] set_access_count;
+        delete[] set_reuse_distance;
+        delete[] set_last_access;
     };
 
     // functions

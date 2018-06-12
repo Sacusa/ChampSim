@@ -414,6 +414,16 @@ void CACHE::handle_read()
             // access cache
             uint32_t set = get_set(RQ.entry[index].address);
             int way = check_hit(&RQ.entry[index]);
+
+            // update stats for reuse distance
+            if (RQ.entry[index].type == LOAD) {
+                total_access_count++;
+                set_access_count[set]++;
+                if (set_last_access[set] != 0) {
+                    set_reuse_distance[set] += (total_access_count - set_last_access[set] - 1);
+                }
+                set_last_access[set] = total_access_count;
+            }
             
             if (way >= 0) { // read hit
 

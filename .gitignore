@@ -1,0 +1,8 @@
+.vscode/
+bin/
+inc/champsim.h.bak
+obj/
+results/
+results_1M/
+run_champsim.sh
+surge/

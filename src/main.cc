@@ -33,6 +33,33 @@ void record_roi_stats(uint32_t cpu, CACHE *cache)
     }
 }
 
+void print_reuse_stats(CACHE *cache)
+{
+    uint64_t avg_reuse_distance = 0, min_reuse_distance = 100000, max_reuse_distance = 0, num_sets = 0;
+    for (uint32_t set = 0; set < cache->NUM_SET; ++set) {
+        if (cache->set_access_count[set] > 1) {
+            uint64_t reuse_distance = cache->set_reuse_distance[set] / (cache->set_access_count[set] - 1);
+            avg_reuse_distance += reuse_distance;
+            ++num_sets;
+
+            if (reuse_distance < min_reuse_distance) {
+                min_reuse_distance = reuse_distance;
+            }
+            if (reuse_distance > max_reuse_distance) {
+                max_reuse_distance = reuse_distance;
+            }
+        }
+    }
+
+    if (num_sets > 0) {
+        avg_reuse_distance /= num_sets;
+    }
+    cout << cache->NAME;
+    cout << " REUSE DISTANCE  AVG: " << setw(6) << avg_reuse_distance;
+    cout << "  MIN: " << setw(6) << min_reuse_distance;
+    cout << "  MAX: " << setw(6) << max_reuse_distance << endl;
+}
+
 void print_roi_stats(uint32_t cpu, CACHE *cache)
 {
     uint64_t TOTAL_ACCESS = 0, TOTAL_HIT = 0, TOTAL_MISS = 0;
@@ -61,6 +88,8 @@ void print_roi_stats(uint32_t cpu, CACHE *cache)
     cout << cache->NAME;
     cout << " PREFETCH  REQUESTED: " << setw(10) << cache->pf_requested << "  ISSUED: " << setw(10) << cache->pf_issued;
     cout << "  USEFUL: " << setw(10) << cache->pf_useful << "  USELESS: " << setw(10) << cache->pf_useless << endl;
+
+    print_reuse_stats(cache);
 }
 
 void print_sim_stats(uint32_t cpu, CACHE *cache)
@@ -140,6 +169,13 @@ void reset_cache_stats(uint32_t cpu, CACHE *cache)
     cache->WQ.TO_CACHE = 0;
     cache->WQ.FORWARD = 0;
     cache->WQ.FULL = 0;
+
+    cache->total_access_count = 0;
+    for (uint32_t set = 0; set < cache->NUM_SET; set++) {
+        cache->set_access_count[set] = 0;
+        cache->set_reuse_distance[set] = 0;
+        cache->set_last_access[set] = 0;
+    }
 }
 
 void finish_warmup()
