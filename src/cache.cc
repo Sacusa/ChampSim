@@ -417,12 +417,29 @@ void CACHE::handle_read()
 
             // update stats for reuse distance
             if (RQ.entry[index].type == LOAD) {
+                uint64_t block_access_count_val, block_reuse_distance_val;
                 total_access_count++;
-                set_access_count[set]++;
-                if (set_last_access[set] != 0) {
-                    set_reuse_distance[set] += (total_access_count - set_last_access[set] - 1);
+                
+                // update the number of times this block address has been accessed
+                if (block_access_count.count(RQ.entry[index].address) != 0) {
+                    block_access_count_val = block_access_count.at(RQ.entry[index].address) + 1;
                 }
-                set_last_access[set] = total_access_count;
+                else {
+                    block_access_count_val = 1;
+                }
+                block_access_count.insert(pair <uint64_t, uint64_t> (RQ.entry[index].address, block_access_count_val));
+
+                // update the sum of reuse distances of this block
+                if (block_last_access.count(RQ.entry[index].address) != 0) {
+                    block_reuse_distance_val = total_access_count - block_last_access.at(RQ.entry[index].address) - 1;
+                    if (block_reuse_distance.count(RQ.entry[index].address) != 0) {
+                        block_reuse_distance_val += block_reuse_distance.at(RQ.entry[index].address);
+                    }
+                    block_reuse_distance.insert(pair <uint64_t, uint64_t> (RQ.entry[index].address, block_reuse_distance_val));
+                }
+
+                // update the last access to this block
+                block_last_access.insert(pair <uint64_t, uint64_t> (RQ.entry[index].address, total_access_count));
             }
             
             if (way >= 0) { // read hit

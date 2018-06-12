@@ -38,22 +38,20 @@ void print_reuse_stats(CACHE *cache)
     cout << cache->NAME << " REUSE DISTANCE OF EACH SET" << endl;
 
     uint64_t avg_reuse_distance = 0, min_reuse_distance = 100000, max_reuse_distance = 0, num_sets = 0;
-    for (uint32_t set = 0; set < cache->NUM_SET; ++set) {
+    map <uint64_t, uint64_t> :: iterator dist_itr;
 
-        // if a set has been accessed atleast twice, print its average reuse distance
-        if (cache->set_access_count[set] > 1) {
-            uint64_t reuse_distance = cache->set_reuse_distance[set] / (cache->set_access_count[set] - 1);
-            avg_reuse_distance += reuse_distance;
-            ++num_sets;  // to calculate average reuse distance of the entire cache
+    for (dist_itr = cache->block_reuse_distance.begin(); dist_itr != cache->block_reuse_distance.end(); ++dist_itr) {
+        uint64_t reuse_distance = dist_itr->second / cache->block_access_count.at(dist_itr->first);
+        avg_reuse_distance += reuse_distance;
+        ++num_sets;  // to calculate average reuse distance of the entire cache
 
-            cout << "  " << cache->NAME << " SET: " << setw(5) << set << "  " << setw(6) << reuse_distance << endl;
+        cout << "  " << cache->NAME << " ADDRESS: " << setw(16) << dist_itr->first << "  " << setw(6) << reuse_distance << endl;
 
-            if (reuse_distance < min_reuse_distance) {
-                min_reuse_distance = reuse_distance;
-            }
-            if (reuse_distance > max_reuse_distance) {
-                max_reuse_distance = reuse_distance;
-            }
+        if (reuse_distance < min_reuse_distance) {
+            min_reuse_distance = reuse_distance;
+        }
+        if (reuse_distance > max_reuse_distance) {
+            max_reuse_distance = reuse_distance;
         }
     }
 
@@ -177,11 +175,9 @@ void reset_cache_stats(uint32_t cpu, CACHE *cache)
     cache->WQ.FULL = 0;
 
     cache->total_access_count = 0;
-    for (uint32_t set = 0; set < cache->NUM_SET; set++) {
-        cache->set_access_count[set] = 0;
-        cache->set_reuse_distance[set] = 0;
-        cache->set_last_access[set] = 0;
-    }
+    cache->block_access_count.clear();
+    cache->block_reuse_distance.clear();
+    cache->block_last_access.clear();
 }
 
 void finish_warmup()
