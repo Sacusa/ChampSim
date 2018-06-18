@@ -35,7 +35,7 @@ void record_roi_stats(uint32_t cpu, CACHE *cache)
 
 void print_reuse_stats(CACHE *cache)
 {
-    cout << cache->NAME << " REUSE DISTANCE OF EACH SET" << endl;
+    cout << cache->NAME << " REUSE DISTANCE OF EACH BLOCK ADDRESS" << endl;
 
     uint64_t avg_reuse_distance = 0, min_reuse_distance = 100000, max_reuse_distance = 0, num_sets = 0;
     map <uint64_t, uint64_t> :: iterator dist_itr;
@@ -893,6 +893,9 @@ int main(int argc, char** argv)
         print_roi_stats(i, &ooo_cpu[i].L2C);
 #endif
         print_roi_stats(i, &uncore.LLC);
+        print_roi_stats(i, &ooo_cpu[i].DTLB);
+        print_roi_stats(i, &ooo_cpu[i].ITLB);
+        print_roi_stats(i, &ooo_cpu[i].STLB);
         cout << "Major fault: " << major_fault[i] << " Minor fault: " << minor_fault[i] << endl;
     }
 
