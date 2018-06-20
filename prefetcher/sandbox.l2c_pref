@@ -1,0 +1,326 @@
+/*
+     Author : Unnati Parekh
+*/
+
+#include "cache.h"
+#include<set>
+#include<iterator>
+
+/* --------------------- PREFETCH PARAMETERS -------------------------- */
+
+#define NOFFSETS 32
+#define MAX_L2_ACCESSES 256
+#define PF1_ACCURACY 256
+#define PF2_ACCURACY 512
+#define PF3_ACCURACY 768
+#define MAX_PREFETCHES 8
+
+/* ------------------------------------------------------------------- */
+
+struct MinCompare
+{
+    bool operator()(pair<int,int> p1, pair<int,int> p2)
+    {
+        return p1.second < p2.second;
+    }
+
+};
+
+set< pair<int , int>, MinCompare > offset_scores;		// stores the offset and score for each round
+set<pair<int,int>> candidate_prefetchers;					// prefetchers whose score is higher than threshold and used for actual memory access
+int l2_access_counter = 0;				// maintains the number of L2 cache accesses for each evaluation period
+int current_evaluation_offset = -8;	// offset being evaluated in the present evaluation period
+int current_offset_score = 0;			// score of offset being presently evaluated
+set<uint64_t> sandbox;					// sandbox
+int last_max_offset = 8;				// maintains the maximum value of offset for the current round
+set<int> discarded_offsets;			// offsets discarded due to lower score than threshold
+set<int> evaluate_offsets;				// offsets to be evaluated in current round
+
+void evaluate_prefetchers_initialize() { // called only once
+	int i;
+	for(i=-8 ; i<=8; i++) {
+		if (i==0) {
+			continue;
+		}
+		evaluate_offsets.insert(i);
+	}
+}
+
+void offset_scores_initialize() { // called only once
+	for (set<int>:: iterator itr = evaluate_offsets.begin(); itr != evaluate_offsets.end(); ++itr) {
+		pair<int, int> p;
+		p.first = *itr;
+		p.second = 0;
+		offset_scores.insert(p);
+	}
+}
+
+/*
+	Function to reset the offset scores for offsets being evaluated in current round, called every new round
+*/
+void offset_scores_reset() { 
+
+	for (auto itr = evaluate_offsets.begin(); itr != evaluate_offsets.end(); ++itr) {
+		pair<int, int> p;
+		p.first = *itr;			// sets offset value
+		p.second = 0;				// sets initial score to 0
+	
+		// check for pairs with same offset value and remove the pairs with non-zero initial score
+		for(auto itr2 = offset_scores.begin() ; itr2!= offset_scores.end(); itr2++) {
+			if(itr2->first == p.first) {
+				offset_scores.erase(itr2);
+				break;
+			}
+		}
+		offset_scores.insert(p);
+  }
+
+}
+
+/* 
+	Function to check if the given line address exists in the sandbox
+*/
+bool sandbox_exists(uint64_t line_addr) {
+	if (line_addr == 0) { // control should not reach here
+    assert(0);
+  }
+
+	if(sandbox.find(line_addr) != sandbox.end())
+		return true;
+	return false;
+}
+
+/*
+	Function to clear the values in the sandbox for evaluation of new offset. This ensures that there is no cross-contamination between 		candidates sharing the sandbox.
+*/
+void sandbox_clear() {
+	for(auto itr = sandbox.begin(); itr != sandbox.end(); itr++ ) {
+		itr = sandbox.erase(itr);
+	}
+}
+
+/*
+	This function is called after evaluation of one offset is complete. If the offset scores are higher than a threshold, then the offset is 		a candidate prefetcher which can be used for actual prefetches from main memory. The number of streams prefetched depends on the range 	in which it's score lies.
+*/
+void select_candidate_prefetchers(int offset, int score) {
+
+		if(score >= PF3_ACCURACY) {
+			// issue maximum 3 prefetches
+			candidate_prefetchers.insert( pair<int,int>(offset, 3));		
+		}
+		else if(score >= PF2_ACCURACY) {
+			// issue maximum 2 prefetches
+			candidate_prefetchers.insert( pair<int,int>(offset, 2));
+		}
+		else if(score >= PF1_ACCURACY) {
+			// issue maximum 1 prefetch
+			candidate_prefetchers.insert( pair<int,int>(offset, 1));
+		}
+	
+}
+
+/* 
+	Function for removing 4 offsets with lowest scores .
+*/
+void offset_scores_clear() {
+	
+	 auto itr = offset_scores.begin();
+	 int count=0;
+	 int originalSize = distance(offset_scores.begin(),offset_scores.end());
+
+	 while(count<5) {
+		discarded_offsets.insert(itr->first);
+		evaluate_offsets.erase(itr->first);
+		advance(itr,1);
+		count++;
+	}
+
+	 itr = offset_scores.begin();
+    advance(itr, 4);
+
+    offset_scores.erase(offset_scores.begin(), itr);
+
+	 int newSize = distance(offset_scores.begin(),offset_scores.end());
+    assert(newSize == (originalSize - 4));
+
+}
+
+/*
+	Function for adding 4 new offsets for evaluation.
+*/
+void evaluate_offsets_add_new() {
+	
+	evaluate_offsets.insert(last_max_offset+1);
+	evaluate_offsets.insert(last_max_offset+2);
+	evaluate_offsets.insert(-1*last_max_offset-1);
+	evaluate_offsets.insert(-1*last_max_offset-2);
+	
+	current_evaluation_offset= -1*last_max_offset-2;
+	last_max_offset+=2;
+
+}
+
+/*
+	Function for evaluation of current_evaluation_offset for number of hits in the sandbox.
+*/
+void candidate_evaluation(uint64_t line_addr) {
+	
+	// if number of L2 accesses is less than maximum number, check for strided stream
+	if(l2_access_counter < MAX_L2_ACCESSES) {
+		if(sandbox_exists(line_addr)) {
+			current_offset_score++;
+		} 
+		if(sandbox_exists(line_addr - current_evaluation_offset)) {
+			current_offset_score++;
+		}
+		if(sandbox_exists(line_addr - 2*current_evaluation_offset)) {
+			current_offset_score++;
+		}
+		if(sandbox_exists(line_addr - 3*current_evaluation_offset)) {
+			current_offset_score++;
+		}
+
+		// increment number of L2 accesses by 1
+		l2_access_counter++;
+	}	
+	
+	// if number of L2 accesses reaches the threshold, either evaluation of current_evaluation_offset is over or the round is over
+	if(l2_access_counter == MAX_L2_ACCESSES) {
+		
+			// add current_evaluation_offset and current_offset_score to offset_scores and evaluate if this offset can be used for actual 			prefetching from main memory
+			pair<int, int> p;
+			p.first = current_evaluation_offset;
+			p.second = current_offset_score;
+			offset_scores.insert(p);
+
+			select_candidate_prefetchers(current_evaluation_offset,current_offset_score);
+
+			sandbox_clear();
+
+			l2_access_counter=0;
+	
+		// if there are still offsets to be evaluated, advance to the next offset and set current_evaluation_offset to that offset
+		if( (evaluate_offsets.find(current_evaluation_offset)) != evaluate_offsets.end() ) {
+			auto offset = evaluate_offsets.find(current_evaluation_offset);
+			advance(offset,1);
+			if(offset != evaluate_offsets.end()) {
+				current_evaluation_offset = *(offset);
+				current_offset_score = 0;
+			}
+			// else the round is over, reset offset scores
+			 else {
+				l2_access_counter=0;
+				offset_scores_clear();
+				evaluate_offsets_add_new();
+				offset_scores_reset();
+			}
+		}
+	}	
+}
+
+void CACHE::l2c_prefetcher_initialize() 
+{
+   evaluate_prefetchers_initialize();
+	offset_scores_initialize();
+}
+
+void CACHE::l2c_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit, uint8_t type)
+{
+	uint64_t line_addr = addr >> LOG2_BLOCK_SIZE;
+	int prefetches_allowed_neg=0, total_neg=0, prefetches_allowed_pos=0, total_pos=0;
+
+	// insert line address in sandbox
+	sandbox.insert(line_addr);
+
+	if(current_evaluation_offset<=16) {
+		candidate_evaluation(line_addr);
+	}
+
+	// Here, we prefetch only upto MAX_PREFETCHES for one direction, per L2 cache access. This is in consideration of the bandwidth 				requirements of the cores. Lower offsets and corresponding negative offsets are allowed to prefetch before the higher offsets.
+	auto itr2=candidate_prefetchers.begin();
+
+	if(itr2->first>0) { // all positive offsets (as set is sorted)
+		for(auto itr=candidate_prefetchers.begin(); itr!=candidate_prefetchers.end(); itr++) {		
+			prefetches_allowed_pos = itr->second;
+
+			// for prefetching in positive direction (positive offset)
+			while(prefetches_allowed_pos>0 && total_pos<MAX_PREFETCHES) {
+				uint64_t prefetch_addr = (line_addr + prefetches_allowed_pos*itr->first) << LOG2_BLOCK_SIZE;
+				prefetch_line(ip, addr, prefetch_addr , FILL_L2);
+				prefetches_allowed_pos--;
+				total_pos++;
+			}
+		}	
+	}
+
+	else if(itr2->first<0){
+		auto itr=candidate_prefetchers.begin();
+		for(; itr!=candidate_prefetchers.end(); itr++) {		
+			if(itr->first>0) {
+				itr2=--itr;
+				break;
+			}
+		}
+		
+		if(itr==candidate_prefetchers.end()) {// all negative offsets 
+				for(auto itr=candidate_prefetchers.begin(); itr!=candidate_prefetchers.end(); itr++) {		
+				prefetches_allowed_neg = itr->second;
+
+				// for prefetching in negative direction (negative offset)
+				while(prefetches_allowed_neg>0 && total_neg<MAX_PREFETCHES) {
+					uint64_t prefetch_addr = (line_addr + prefetches_allowed_neg*itr->first) << LOG2_BLOCK_SIZE;
+					prefetch_line(ip, addr, prefetch_addr , FILL_L2);
+					prefetches_allowed_neg--;
+					total_neg++;
+				}	
+			}
+		}
+	
+		// if some offsets are positive and other are negative, prefetch in each direction separately upto MAX_PREFETCHES, starting from 				minimum offsets
+		else {
+			for(; itr!=candidate_prefetchers.end(); itr++) {		
+				prefetches_allowed_pos = itr->second;
+
+				// for prefetching in positive direction (positive offset)
+				while(prefetches_allowed_pos>0 && total_pos<MAX_PREFETCHES) {
+					uint64_t prefetch_addr = (line_addr + prefetches_allowed_pos*itr->first) << LOG2_BLOCK_SIZE;
+					prefetch_line(ip, addr, prefetch_addr , FILL_L2);
+					prefetches_allowed_pos--;
+					total_pos++;
+				}	
+			}
+
+			for(; itr2!=candidate_prefetchers.begin(); itr2--) {		
+				prefetches_allowed_neg = itr2->second;
+
+				// for prefetching in positive direction (positive offset)
+				while(prefetches_allowed_neg>0 && total_pos<MAX_PREFETCHES) {
+					uint64_t prefetch_addr = (line_addr + prefetches_allowed_neg*itr2->first) << LOG2_BLOCK_SIZE;
+					prefetch_line(ip, addr, prefetch_addr , FILL_L2);
+					prefetches_allowed_neg--;
+					total_neg++;
+				}	
+			}
+		}
+
+	}
+}
+
+void CACHE::l2c_prefetcher_cache_fill(uint64_t addr, uint32_t set, uint32_t way, uint8_t prefetch, uint64_t evicted_addr)
+{
+	if ((int) NUM_SET < (int) set) {
+         assert(0);
+    }
+
+    if ((int) NUM_WAY < (int) way) {
+         assert(0);
+    }
+
+    // set prefetch bit 
+    block[set][way].prefetch = prefetch;
+}
+
+void CACHE::l2c_prefetcher_final_stats()
+{
+    
+}

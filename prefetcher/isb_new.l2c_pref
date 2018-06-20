@@ -1,0 +1,752 @@
+/* This is the implemenation of the Variable Length Delta Prefetcher.
+The functions and classes are defined at vldp.h.
+Implemented by: Samuel Pakalapati
+E-mail: pakalapatisamuel@gmail.com*/
+
+#include "cache.h"
+#include "isb_new.h"
+
+
+const unsigned long long page_size = 32768;
+const unsigned int tlb_size = 128;
+static unsigned long int EV_counter=0; 
+using namespace std;
+vector <unsigned long long> tlb;
+vector <Addr> address (8);
+uint64_t address_pref[16];
+//static unsigned long long count12=0;
+//const unsigned long long debugval = 250000;
+void updateTLB(unsigned long long address);
+int isInTLB(unsigned long long address);
+
+
+// ISBPrefetcher::ISBPrefetcher()
+// {
+// counter =0;
+// degree = 8;
+// }
+// ISBPrefetcher::~ISBPrefetcher(){
+
+// }
+void calculatePrefetch(uint64_t blk_addr, uint64_t PC, vector<Addr> &addresses) // Added PC to function parameters
+{
+	// if (!pkt->req->hasPC()) {
+	// 	return;
+	// }
+	//	inform("\n\nhi");
+
+	// unsigned long long PC = pkt->req->getPC();
+	//:inform("addr at CalculatePrefetcher %lld",blk_addr);
+	// unsigned long long blk_addr = (unsigned long long) ((pkt->getAddr() & ~(Addr)(blkSize-1)));
+        //inform("PC %lld addr %lld ",PC,blk_addr);
+
+	unsigned long long current_address = blk_addr,page_number;
+	list<PS_AMC*> &Ps = PS;
+	list<PS_AMC*>::iterator iter_PS;
+	//vector<SP_AMC*> &Sp = SP;
+	//inform("Count %d ",count12);
+        //vector<unsigned long long> P;
+	map<unsigned long long, Page*> &page = page_map;
+	map<unsigned long long, Page*>::iterator map_it;
+	//int i,i_sp;
+	unsigned long long struct_addr;
+        int set=0,update_set=0;//,set_pc=0;
+         //inform(" Ps Size %d",Ps.size());
+	
+	updateTLB(current_address);	
+
+       // If the address is in PSAMC then generates the corresponding prefetch address
+	for(iter_PS=Ps.begin(); iter_PS != Ps.end() && set<8 ;iter_PS++)
+	{      
+		if( current_address == (*iter_PS)->Physical_Tag) 
+		{
+			assert(iter_PS != (Ps).end());
+			struct_addr = (*iter_PS)->Structural_Address;
+			generatePrefetch(struct_addr,addresses,set,blk_addr);
+			if (set>8) break;
+		}
+	}
+
+		// Checks whether the address and PC are in the offchip memory and if 8 address are 
+		// not prefetched then it prefetches until 8. If address and PC tuple are present 
+ 		// sets the flag "update_set" so that PSAMC updation is not done.
+		page_number = current_address >> LOG2_PAGE_SIZE;
+		map_it = page.find(page_number);
+		if(map_it!=page.end())
+		{
+		      Page* temp=map_it->second;
+		      for(iter_PS = (temp->offChip_Ps).begin();iter_PS != (temp->offChip_Ps).end();iter_PS++)
+		      {
+			    if( current_address == (*iter_PS)->Physical_Tag)
+			    {
+				 assert(iter_PS != (temp->offChip_Ps).end());
+			        //  inform("started");
+			        struct_addr = (*iter_PS)->Structural_Address; 
+				if(set<8)
+				      generatePrefetch(struct_addr,addresses,set,blk_addr);
+				else
+				      break;
+			    }
+			    if( current_address == (*iter_PS)->Physical_Tag && PC == (*iter_PS)->Prog_Count)
+			       update_set=1;
+		      }
+		}      
+  
+        if(!update_set)
+	UpdateRegion(current_address,PC);
+	
+	
+}
+
+
+void UpdateRegion(Addr address, unsigned long long PC)
+{
+	unsigned long long current_address = (unsigned long long)(address); //earlier was like this
+	//unsigned long int current_address = (unsigned long int)(address; 
+	list<Training_Unit*> &TU = Train_Unit;
+	list<Training_Unit*>::iterator TU_iter;
+	list<PS_AMC*> &Ps = PS;
+	list<PS_AMC*>::iterator A_iter,B_iter,it;
+	vector<SP_AMC*> &Sp = SP;
+	vector<Stream_Predictor*> &stream = Stream;
+	vector<unsigned long long>:: iterator vect,tempvect ;
+	PS_AMC *A = NULL;
+	PS_AMC *B = NULL;
+	unsigned long long base_structural_address,last_address=0;
+	int i_sp_A,i_sp_B,i_stream;
+	//	inform("Update");
+	
+	for(TU_iter = TU.begin();TU_iter != TU.end();TU_iter++)
+	{       
+		// Searching for PC in the Training Unit
+		if(((*TU_iter)->PC)==PC)
+		{
+			//inform("PC update");
+			// Checking PC in the Training Unit 
+			last_address = (*TU_iter)->Last_Addr;
+			break;
+		}
+	}
+	//if(counter == 28992)
+	  //inform("Hit");
+	//inform("\ninfo: Last address @ 1 : %lld",last_address);
+	if(TU_iter != TU.end())
+	{
+		// PC is already in the Training Unit		
+			
+		// Checking A present in the AMC
+
+		for(A_iter = Ps.begin();A_iter != Ps.end();A_iter++)
+		{
+			if((((*A_iter)->Physical_Tag) == last_address) && ((*A_iter)->Prog_Count == PC))
+			{
+				A = (*A_iter);
+				break; 
+			}
+		}
+		
+		if(A_iter != Ps.end())
+		{	//inform("Last address @ 2 : %lld struct_addr %lld",(*A_iter)->Physical_Tag,(*A_iter)->Structural_Address);
+			assert(A != NULL);
+			// A is Present and checking for B
+			for(B_iter = Ps.begin();B_iter != Ps.end();B_iter++)
+			{
+				if(((*B_iter)->Physical_Tag) == current_address && ((*B_iter)->Prog_Count == PC))
+				{
+					B = *B_iter;
+					break;
+				}
+			}
+			if(B_iter != Ps.end())
+			{
+				assert(B != NULL);
+				// A and B are present
+				B->Eviction_Counter = EV_counter++;
+				if(A_iter == B_iter)
+				{
+				  // Last address and current address are same
+				  // Do nothing
+				}
+				else if((B->Structural_Address) - (A->Structural_Address) <= SP_blk_size)
+					{
+						// If A and B have Structural Address within a range of 16
+						if(B->Confidence_Counter <3)
+							(B->Confidence_Counter)++;
+						else
+							(B->Confidence_Counter) = 3;
+						//inform("Case 1");
+					}
+				else
+				{
+					// A and B dont have Structural Address within a range of 16
+					if(B->Confidence_Counter > 1)
+					{
+						(B->Confidence_Counter)--;
+						//inform("Case 2");
+					}
+					else if(B->Confidence_Counter == 1)
+					{
+						// Shifting the contents as the Confidence_Counter reached 0
+						// Changing the strucural address of B
+						SP_AMC temp;
+						//inform("Last address @ 3 : %lld",(*A_iter)->Physical_Tag);
+						//inform("Case 3");
+						base_structural_address = B->Structural_Address - (B->Structural_Address%SP_blk_size);
+                                               i_sp_B = base_structural_address/SP_blk_size;
+					        i_stream = base_structural_address/SP_blk_size;
+						
+						assert((stream[i_stream])->Starting_Address == base_structural_address);
+
+						
+						assert((Sp[i_sp_B])->Structural_Tag == base_structural_address);
+						//inform("Last address @ 4 : %lld",(*A_iter)->Physical_Tag);
+						base_structural_address = A->Structural_Address - (A->Structural_Address%SP_blk_size);
+						
+						i_sp_A = base_structural_address/SP_blk_size;
+						assert((Sp[i_sp_A])->Structural_Tag == base_structural_address);
+                                               
+						if((Sp[i_sp_A])->Physical_Address.size() < SP_blk_size)
+						{       
+							// Removing B from Original Place
+							(stream[i_stream])->length--;
+							int set = 0 ;
+
+							
+							for(vect = (Sp[i_sp_B])->Physical_Address.begin(); vect !=((Sp[i_sp_B])->Physical_Address).end(); vect++)
+							{
+								//  Have to update corrsponding PSAMC for each physical address
+								//inform("Vect %lld Physical Tag %lld",*vect,B->Physical_Tag);
+								if(set==1)
+								{
+									for(it = Ps.begin();it != Ps.end(); it++)
+									{
+										if((*it)->Physical_Tag == *vect && ((*it)->Prog_Count == PC))
+										{
+											(*it)->Structural_Address--;
+											break;
+										}			
+									}
+								}
+								if(*vect == B->Physical_Tag)
+								{
+									set=1;
+									tempvect = vect;
+									
+								}
+							}(Sp[i_sp_B])->Physical_Address.erase(tempvect);
+
+							
+							i_stream = base_structural_address/SP_blk_size; 
+							assert((stream[i_stream])->Starting_Address == base_structural_address);
+							(stream[i_stream])->length++;
+							set =0;
+							B->Structural_Address = base_structural_address + (unsigned long long) ((Sp[i_sp_A])->Physical_Address.size());
+							(Sp[i_sp_A])->Physical_Address.push_back(B->Physical_Tag);
+							
+							//inform("Last address @ 5 : %lld str_add of a %lld",base_structural_address,B->Structural_Address);
+
+						}// Added to new place if A had space 
+
+					}//Closing Confidence Counter becomes zero
+
+				}// Closing when A and B are not in the range of 16
+
+			} //Closing condition when B is present
+			else
+			{
+				// A is Present and B is not present
+				//inform("Case 3 A is present. B is not present");
+				// Creating PS AMC node for new address
+				//inform("Case 4 nad 5");
+				
+				if(Ps.size()>=PMC_Size)
+				  B = freePSAMC(last_address,current_address);
+				else
+				  B = new PS_AMC();
+
+				B->Confidence_Counter = 2;
+				B->Physical_Tag = current_address;
+				//inform("Case 4 %lld",temp_PS->Physical_Tag);
+				B->valid = 1;
+				B->Eviction_Counter = EV_counter++;
+                                B->Prog_Count = PC;
+				
+                               //inform("Last address @ 5 : %lld str_add of a %lld",(A)->Physical_Tag,A->Structural_Address);
+				
+			       base_structural_address = (A->Structural_Address - (A->Structural_Address%SP_blk_size));
+				i_sp_A = base_structural_address/SP_blk_size;
+				//inform("Last address :base %lld i_sp_A %lld Struct add %lld",base_structural_address,i_sp_A,(Sp[i_sp_A])->Structural_Tag);
+				//inform("Base address @ 5 : %lld",base_structural_address);
+				
+				// Finding the node in the SP_AMC
+				/*for(iter_A = Sp.begin();iter_A != Sp.end();iter_A++)
+				{
+					if((*iter_A)->Structural_Tag == base_structural_address)
+						break;
+				}
+				*/
+				//inform("Last address @ 6 : %lld",(*A_iter)->Physical_Tag);
+				//inform("isp %lld base %lld",i_sp_A,base_structural_address);
+				assert((Sp[i_sp_A])->Structural_Tag == base_structural_address);
+
+				// found the iterator of A in SP AMC
+				if(((Sp[i_sp_A])->Physical_Address.size()) <SP_blk_size)
+				{
+					//inform("Case 4");
+						B->Structural_Address = base_structural_address +(unsigned long long) ((Sp[i_sp_A])->Physical_Address.size());
+						//Ps.push_back(temp_PS);inform("Push_Back@3");
+						(Sp[i_sp_A])->Physical_Address.push_back(current_address);
+					
+					i_stream = base_structural_address/SP_blk_size;
+					assert((stream[i_stream])->Starting_Address == base_structural_address);
+					(stream[i_stream])->length++;
+
+				}// Closing SP_AMC size less than 16
+				else
+				{
+					// Allocate new space for B in SP AMC
+					//inform("Case 5");
+					B->Structural_Address = counter;
+
+					// Creating new SP AMC entry
+					SP_AMC* Temp_SP = new SP_AMC();
+					Temp_SP->valid = 1;
+					Temp_SP->Structural_Tag = counter;
+					(Temp_SP->Physical_Address).push_back(current_address);
+					Sp.push_back(Temp_SP);
+
+					// Creating new Stream Predictor Node
+					Stream_Predictor* Temp_Stream = new Stream_Predictor();
+					Temp_Stream->length++;
+					if(Temp_Stream->length == 1)
+						Temp_Stream->Starting_Address = counter;
+					stream.push_back(Temp_Stream);
+					counter =counter + SP_blk_size;
+
+				}
+				if(Ps.size()<PMC_Size) Ps.push_back(B);
+                               //inform("Temp_PS Phi Tag %lld", temp_PS->Physical_Tag);
+					
+			}// Ending condition when A is Present and B is not Present
+		}//Ending A is present
+		else
+		{
+			// A is not present in PS_AMC
+			//inform("Case 6 and 9");
+			if(Ps.size()>=PMC_Size)
+				  A = freePSAMC(last_address,current_address);
+			else
+				  A = new PS_AMC();
+			A->Physical_Tag =  (*TU_iter)->Last_Addr;
+			//inform("Case 3 %lld",A->Physical_Tag);
+			A->Structural_Address = counter;
+			A->Confidence_Counter = 2;
+			A->valid  = 1;
+			A->Eviction_Counter = EV_counter++;
+                        A->Prog_Count = PC;
+			if(Ps.size()<PMC_Size) Ps.push_back(A);
+
+			SP_AMC* Temp_SP = new SP_AMC();;
+			Temp_SP->valid = 1;
+			Temp_SP->Structural_Tag = counter;
+			(Temp_SP->Physical_Address).push_back((*TU_iter)->Last_Addr);
+			Sp.push_back(Temp_SP);
+
+			// Creating new Stream Predictor Node
+			Stream_Predictor* Temp_Stream = new Stream_Predictor();
+			Temp_Stream->length++;
+			if(Temp_Stream->length == 1)
+				Temp_Stream->Starting_Address = counter;
+			stream.push_back(Temp_Stream);
+
+
+			// checking if B is there or not
+			for(B_iter = Ps.begin();B_iter != Ps.end();B_iter++)
+			{
+				if(((*B_iter)->Physical_Tag) == current_address && ((*B_iter)->Prog_Count == PC))
+				{
+					B = *B_iter;
+					break;
+				}
+			}
+			if(B_iter != Ps.end())
+			{
+				// B is already Present
+				// Check Confidence counter
+				B->Eviction_Counter = EV_counter++;
+				if((*B_iter)->Confidence_Counter >1)
+					(*B_iter)->Confidence_Counter--;
+				else
+				{
+					//inform("Getting inside this case *************************************************************************************");
+					//inform("Case 6");
+					B = *B_iter;
+					//*******Type code for removing B from SP_AMC
+					base_structural_address = B->Structural_Address - (B->Structural_Address%SP_blk_size);
+
+					// Find the element in SP AMC and Stream_Predictor
+					/*for(iterat_Stream = stream.begin();iterat_Stream != stream.end();iterat_Stream++)
+					{
+						if(base_structural_address == ((*iterat_Stream)->Starting_Address)) break;
+					}
+                                       */
+					i_stream = base_structural_address/SP_blk_size;
+					assert((stream[i_stream])->Starting_Address == base_structural_address);
+					
+					/*for(iter_B = Sp.begin(); iter_B != Sp.end();iter_B++)
+					{
+						if(base_structural_address == (*iter_B)->Structural_Tag) break; 
+					}*/
+					i_sp_B = base_structural_address/SP_blk_size;
+					assert((Sp[i_sp_B])->Structural_Tag == base_structural_address);
+					(stream[i_stream])->length--;
+					int set =0;
+
+					for(vect = (Sp[i_sp_B])->Physical_Address.begin(); vect !=((Sp[i_sp_B])->Physical_Address).end(); vect++)
+					{
+						//  Have to update corrsponding PSAMC for each physical address
+						if(set==1)
+						{
+							for(it = Ps.begin();it != Ps.end(); it++)
+							{
+								if((*it)->Physical_Tag == *vect && (*it)->Prog_Count==PC)
+									(*it)->Structural_Address--;
+							}
+						}
+						if(*vect == B->Physical_Tag)
+						{
+							set=1;
+							tempvect = vect;
+						}
+					}(Sp[i_sp_B])->Physical_Address.erase(tempvect);			
+
+					(Temp_SP->Physical_Address).push_back(current_address);
+					(*B_iter)->Structural_Address = counter + 1;
+					Temp_Stream->length++;
+					
+				} //Closing when Confidence counter = 1
+			
+			}// Closing when B is present  
+			else
+			{
+				// B is not Present
+				//inform("Case 9");
+				if(Ps.size()>=PMC_Size)
+				  B = freePSAMC(last_address,current_address);
+				else
+				  B = new PS_AMC();
+				B->Physical_Tag =  current_address;
+                               //inform("Case 2 %lld",B->Physical_Tag);
+				B->Structural_Address = counter + 1;
+				B->Confidence_Counter = 2;
+				B->valid  = 1;
+				B->Eviction_Counter = EV_counter++;
+                                B->Prog_Count = PC;
+				if(Ps.size()<PMC_Size) Ps.push_back(B);
+
+				(Temp_SP->Physical_Address).push_back(current_address);
+				Temp_Stream->length++;
+			}
+			counter =counter + SP_blk_size;
+
+		}// Ending A is not present 
+		(*TU_iter)->Last_Addr=current_address;			
+		
+	}// Ending when PC is present in Training Unit
+	else	
+	{
+		// This is the first entry of this PC
+		// Creating new Training Unit node
+		//inform("Adding First Node of PC %lld %ld",PC,current_address);
+		//inform("Case 7");
+		Training_Unit* Temp_TU = new Training_Unit();
+		Temp_TU->PC = PC;
+		Temp_TU->Last_Addr = current_address;
+                    
+		// Creating new PS AMC node
+		if(Ps.size()>=PMC_Size)
+			  A = freePSAMC(last_address,current_address);
+		else
+			  A = new PS_AMC();
+		A->Confidence_Counter = 2;
+		A->Physical_Tag = current_address;
+		//inform("Case 1 %lld",Temp_PS->Physical_Tag);
+		A->Structural_Address = counter;
+		A->valid  = 1;
+		A->Prog_Count = PC;
+		A->Eviction_Counter = EV_counter++;
+		if(Ps.size()<PMC_Size) Ps.push_back(A);
+		//inform("Push_Back@2");
+		TU.push_back(Temp_TU);
+
+		// Creating new SP AMC node
+		SP_AMC* Temp_SP = new SP_AMC();
+		Temp_SP->valid = 1;
+		Temp_SP->Structural_Tag = counter;
+		(Temp_SP->Physical_Address).push_back(current_address);
+		Sp.push_back(Temp_SP);
+
+		// Creating new Stream Predictor Node
+		Stream_Predictor* Temp_Stream = new Stream_Predictor();
+		Temp_Stream->length++;
+		if(Temp_Stream->length == 1)
+			Temp_Stream->Starting_Address = counter;
+		stream.push_back(Temp_Stream);
+			//		inform("Details after Adding PC=%lld Addr=%ld",Temp_TU->PC,(Temp_TU->PS.back())->Physical_Tag);
+
+		counter =counter + SP_blk_size;
+
+
+	}
+}
+
+void updateTLB(unsigned long long address)
+{
+	int i;
+
+	vector<unsigned long long>:: iterator it;
+	unsigned long long page_number;
+
+	page_number = address/page_size;
+	//inform("TLB size %d",tlb.size());
+	//inform(" Page Number %lld Miss/Hit %d  address %lld",page_number,isInTLB((address)),address);
+	it = tlb.begin();
+	//inform("%d",tlb.size());
+	for(i=0;i<tlb.size();i++)
+	{      // inform("Hi1");
+		//inform("Pagenumber %lld Tlb %lld",page_number,tlb.at(i));
+		if(page_number == tlb[i])
+			break;
+		it++;
+	}
+	if(i<tlb.size())
+	{
+		// The page is in TLB Table
+		//inform("Hi2 %d",i);
+		tlb.erase(it);
+		tlb.push_back(page_number);
+		 
+	}
+	else
+	{       //inform("MISS");
+		//The page is not in TLB Table
+		if(tlb.size()<tlb_size)
+		{
+			// TLB can have vacant spaces
+			//inform("Hi3");
+			tlb.push_back(page_number);
+		}
+		else
+		{
+			//TLB is full
+			//inform("Hi4");
+			tlb.erase(tlb.begin());
+			tlb.push_back(page_number);
+		}
+	}
+	assert(tlb.size()<=tlb_size);
+
+}
+
+int isInTLB(unsigned long long address)
+{
+	int i;
+
+	unsigned long long page_number;
+
+	page_number = address/page_size;
+	//inform("Pagenumber @ tlb %lld",page_number);
+	for(i=0;i<tlb.size();i++)
+	{
+		if(page_number == tlb[i])
+		{
+		 // inform("Hit");	
+		  return 1;
+			
+		}
+		 
+	}
+	return 0;
+}
+
+Stream_Predictor::Stream_Predictor()
+{
+		length = 0;
+		Prefetch_Distance =32;
+}
+
+// ISBPrefetcher* ISBPrefetcherParams::create()
+// {
+// 		return new ISBPrefetcher(this);
+// }
+
+PS_AMC* freePSAMC(unsigned long long last,unsigned long long current)
+{
+  	list<PS_AMC*> &Ps = PS;
+	list<PS_AMC*>::iterator it,it_ps;
+	map<unsigned long long, Page*> &page = page_map;
+	map<unsigned long long, Page*>::iterator map_it;
+/*	vector<Stream_Predictor*> &stream = Stream;
+	vector<SP_AMC*> &Sp = SP;
+	vector <unsigned long long>::iterator vect,tempvect;
+	unsigned long long base_structural_address;
+	int set=0;
+	int i_sp,i_stream;
+*/	//inform("Case 8");
+       unsigned long long page_number;
+	unsigned long int min=EV_counter;
+	it_ps = Ps.end();
+	for(it = Ps.begin();it != Ps.end();it++)
+	{
+	  page_number = ((*it)->Physical_Tag)/page_size;
+	  
+	  if(!isInTLB(page_number) && ((*it)->Physical_Tag)!= current && ((*it)->Physical_Tag)!=last)
+	  {
+		//inform("Case 8.1");		 
+		break;
+	  }
+	  if((min>(*it)->Eviction_Counter) && ((*it)->Physical_Tag != current) && ((*it)->Physical_Tag != last))
+	  {
+		min = (*it)->Eviction_Counter;
+		it_ps = it;
+	  }
+	    
+	}
+	
+	if(it == Ps.end()) it=it_ps;
+	assert(it!=Ps.end());
+/*	base_structural_address = (*it)->Structural_Address - ((*it)->Structural_Address%SP_blk_size);	 
+        i_sp = base_structural_address/SP_blk_size;
+	i_stream = base_structural_address/SP_blk_size;
+	assert((stream[i_stream])->Starting_Address == base_structural_address);
+	assert((Sp[i_sp])->Structural_Tag == base_structural_address);
+	(stream[i_stream])->length--;
+	
+	//inform("Above Hit Struct add %lld Structural_Tag %lld Size %d",( *it)->Structural_Address,(Sp[i_sp])->Structural_Tag,(Sp[i_sp])->Physical_Address.size()); 
+	for(vect = (Sp[i_sp])->Physical_Address.begin(); vect !=((Sp[i_sp])->Physical_Address).end(); vect++)
+	{
+		//  Have to update corrsponding PSAMC for each physical address
+		//inform("Vect %lld Physical_Address %lld",*vect,( *it)->Physical_Tag);
+		if(set==1)
+		{
+			for(it_ps = Ps.begin();it_ps != Ps.end(); it_ps++)
+			{
+				if((*it_ps)->Physical_Tag == *vect && (*it_ps)->Prog_Count==(*it)->Prog_Count)
+					(*it_ps)->Structural_Address--;
+			}
+		}
+		if(*vect ==( *it)->Physical_Tag)
+		{
+			set=1;
+			tempvect = vect;
+		//	inform("Hit");
+		}
+	}
+	assert(tempvect !=((Sp[i_sp])->Physical_Address).end());
+	//inform("Tempvect %lld phy address %lld", *tempvect,( *it)->Structural_Address);
+	((Sp[i_sp])->Physical_Address).erase(tempvect);
+*/	
+        PS_AMC *node = new PS_AMC();
+	node = *(it);
+	page_number = (node->Physical_Tag) / page_size;
+	map_it = page.find(page_number);
+	if(map_it!=page.end())
+	      (((map_it)->second)->offChip_Ps).push_back(node);
+	else
+	{
+	  Page* p = new Page();
+	  (p->offChip_Ps).push_back(node);
+	  page.insert (map_it, std::pair<unsigned long long,Page*>(page_number,p));
+	}	
+	return(*it);
+}
+
+
+void  generatePrefetch(unsigned long long struct_addr,vector<Addr> &addresses, int &set,Addr blk_addr)
+{
+        vector<SP_AMC*> &Sp = SP;
+	vector<unsigned long long> P;
+	int i,i_sp,j=0;
+	unsigned long long base_structural_address;
+	
+        base_structural_address = struct_addr - (struct_addr%SP_blk_size);
+	i = struct_addr - base_structural_address + 1; 
+        i_sp = base_structural_address/SP_blk_size;
+	
+	assert((Sp[i_sp])->Structural_Tag == base_structural_address);
+                      
+	P=(Sp[i_sp])->Physical_Address;     
+	for(; i <=(P).size(); i++)
+		{
+                //inform("%d %d",  isInTLB((Addr)P[i]),samePage(blk_addr, (Addr)P[i]));
+		if (isInTLB((Addr)P[i]) || (blk_addr >> LOG2_PAGE_SIZE == (Addr)P[i] >> LOG2_PAGE_SIZE))
+			{
+			address_pref[j] = (Addr)P[i];
+			j++;
+			addresses.push_back((Addr)P[i]); 
+			set++;
+			//inform(" Addr Inserted : %lld",P[i]);
+			}
+	//	else count12++;
+				
+		if (set>8) break;
+		// inform("inserted");
+		}
+}
+
+
+
+void CACHE::l2c_prefetcher_initialize() 
+{
+
+}
+
+void CACHE::l2c_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit, uint8_t type)
+{
+
+	int delta[4],
+		pref_block = 0,
+		dhb_entry=0,
+		pred_delta=0,
+		i, j, flag = 0;
+	uint64_t curr_page = addr >> LOG2_PAGE_SIZE,
+			 curr_block = (addr >> LOG2_BLOCK_SIZE) & 0x7FFF,
+			 pref_addr=0,
+			 temp_addr=0,
+			 orig_addr = addr,
+			 last_4_blocks[4];
+for(i=0; i<16; i++)
+	address_pref[i] = 0;
+
+calculatePrefetch(addr, ip, address);
+
+for(i=0; i<16; i++)
+if(address_pref[i] != 0)
+	prefetch_line(ip, addr, address_pref[i], FILL_L2);
+
+}
+
+void CACHE::l2c_prefetcher_cache_fill(uint64_t addr, uint32_t set, uint32_t way, uint8_t prefetch, uint64_t evicted_addr)
+{
+	// if(prefetch)
+	// {
+	// 	uint64_t page_num = addr >> LOG2_PAGE_SIZE,
+	// 			 match = 0,
+	// 	    	 curr_block = (addr >> LOG2_BLOCK_SIZE) & 0x7FFF;
+	// 	int curr_delta = 0;
+	// 	    DELTA_HISTORY_BUFFER *buffer = L2_DHB[cpu];
+	// 	    for(match = 0; match < NUM_DHB_PAGES; match++){
+	// 	    	if(buffer[match].page_num == page_num){ 		// DHB hit
+	// 	    		for(int i=3; i>0; i--)												// Left shift the deltas
+	// 	    			buffer[match].last_4_offsets[i] = buffer[match].last_4_offsets[i-1];
+	// 	    		buffer[match].last_4_offsets[0] = addr;
+	// 	    	}
+	//     block[set][way].prefetch = prefetch;
+	// }
+// }
+}
+
+void CACHE::l2c_prefetcher_final_stats()
+{
+	cout << endl << "L2C ISB final stats" << endl;
+}

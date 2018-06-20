@@ -2,7 +2,6 @@
 bin/
 inc/champsim.h.bak
 obj/
-results/
-results_1M/
+results*/
 run_champsim.sh
 surge/

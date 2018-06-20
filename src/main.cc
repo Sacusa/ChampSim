@@ -843,6 +843,9 @@ int main(int argc, char** argv)
                 record_roi_stats(i, &ooo_cpu[i].L1D);
                 record_roi_stats(i, &ooo_cpu[i].L1I);
                 record_roi_stats(i, &ooo_cpu[i].L2C);
+                record_roi_stats(i, &ooo_cpu[i].DTLB);
+                record_roi_stats(i, &ooo_cpu[i].ITLB);
+                record_roi_stats(i, &ooo_cpu[i].STLB);
                 record_roi_stats(i, &uncore.LLC);
 
                 all_simulation_complete++;

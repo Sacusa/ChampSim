@@ -1,0 +1,278 @@
+/*
+     Author : Unnati Parekh
+*/
+
+#include "cache.h"
+
+/* --------------------- PREFETCH PARAMETERS -------------------------- */
+
+#define DEFAULT_OFFSET 1
+#define NOFFSETS 46
+#define RRINDEX 8
+#define RRTAG 12
+#define SCOREMAX 31
+#define ROUNDMAX 100
+#define BADSCORE 1
+#define DELAYQSIZE 15
+
+/* ------------------------------------------------------------------- */
+
+#define TRUNCATE(x,nbits) (((x) & ((1<<(nbits))-1)))
+
+#define SAMEPAGE(lineaddr1,lineaddr2) ((((lineaddr1) ^ (lineaddr2)) >> LOG2_BLOCK_SIZE) == 0)
+
+#define INCREMENT(x,n) {x++; if (x==(n)) x=0;}
+
+int OFFSET[NOFFSETS] = {1,-1,2,-2,3,-3,4,-4,5,-5,6,-6,7,-7,8,-8,9,-9,10,-10,11,-11,12,-12,13,-13,14,-14,15,-15,16,-16,18,-18,20,-20,24,-24,30,-30,32,-32,36,-36,40,-40};
+int recent_request[1<<RRINDEX]; 
+int prefetch_offset=1;
+
+struct offsets_scores {
+  int score[NOFFSETS];		// maintains scores of each offset being considered		    
+  int max_score;          	// maintains maximum score for a particular learning phase
+  int best_offset;        	// best offset for a particular learning phase
+  int round;              	// latest round number 
+  int last;                   	// index of next offset to be considered in the learning phase
+} offset_score;                     
+
+
+struct delay_queue {
+  int lineaddr[DELAYQSIZE];	// array for implementation of the queue of addresses  
+  int valid[DELAYQSIZE];    	// for checking if slot at some index of key is available or not
+  int tail;                 	
+  int head;                 
+} delay_q;   
+
+/* --------------------- RECENT REQUEST TABLE -------------------------- */             
+
+void rr_initialize() {
+   int i;
+   for (i=0; i<(1<<RRINDEX); i++) {
+      recent_request[i] = 0;
+   }
+}
+
+void rr_insert(uint64_t addr) {
+   int index = TRUNCATE(addr^(addr>>RRINDEX),RRINDEX);	// gets index (8 LSB of the address)
+   int tag = TRUNCATE(addr>>RRINDEX,RRTAG);		// gets tag (12 bits after the 8 LSB)
+   recent_request[index] = tag;				// inserts tag into the table at index
+}
+
+int rr_hit(uint64_t addr) {
+   int index = TRUNCATE(addr^(addr>>RRINDEX),RRINDEX);	// computes index of the address addr
+   int tag = TRUNCATE(addr>>RRINDEX,RRTAG);		// computes tag of the address addr
+   return (recent_request[index]==tag); 		// returns true if addr is present in RR table
+ }
+
+/* --------------------- OFFSET SCORES -------------------------- */
+
+void offset_reset() {
+  int i;
+  for (i=0; i<NOFFSETS; i++) {
+    offset_score.score[i] = 0;
+  }
+  offset_score.max_score = 0;
+  offset_score.best_offset = 0;
+  offset_score.round = 0;
+  offset_score.last = 0;
+}
+
+/* --------------------- DELAY QUEUE -------------------------- */
+
+void dq_initialize() {
+  int i;
+  for (i=0; i<DELAYQSIZE; i++) {
+    delay_q.lineaddr[i] = 0;
+    delay_q.valid[i] = 0;
+  }
+  delay_q.tail = 0;
+  delay_q.head = 0;
+}
+
+
+void dq_push(uint64_t addr) {
+  // returns true if delay queue is full 
+  if (delay_q.valid[delay_q.tail]) {
+    rr_insert(delay_q.lineaddr[delay_q.head]);		// enqueue the oldest address from the queue 
+    delay_q.valid[delay_q.head] = 0;			// mark the slot in delay queue available
+    INCREMENT(delay_q.head,DELAYQSIZE);			// update head of delay queue 
+  }
+  // when delay queue is not full
+  if (delay_q.valid[delay_q.tail] != 0) {
+  	assert(0);
+  }
+  delay_q.lineaddr[delay_q.tail] = TRUNCATE(addr,RRINDEX+RRTAG);	// add appropriate addr bits to delay queue	
+  delay_q.valid[delay_q.tail] = 1;			// mark the slot in delay queue filled
+  INCREMENT(delay_q.tail,DELAYQSIZE);			// update tail of delay queue
+}
+
+/* 
+   Function to check if delay queue is empty
+*/
+int dq_ready() {
+  if (! delay_q.valid[delay_q.head]) {
+    return 0;
+  }
+  return 1;
+}
+
+/*
+   Function to dequeue the addresses in the delay queue and fill the RR table
+*/
+void dq_pop() {
+  // check if delay queue is empty
+  if (! dq_ready()) {
+    return;
+  }
+  while(delay_q.head != delay_q.tail) {
+    if (delay_q.valid[delay_q.head] == 0) {
+	assert(0);
+    }
+    rr_insert(delay_q.lineaddr[delay_q.head]);		// insert into RR table
+    delay_q.valid[delay_q.head] = 0;			// mark slot in delay queue empty
+    INCREMENT(delay_q.head,DELAYQSIZE);			// update head of delay queue
+  }
+}
+
+/* --------------------- BEST OFFSET LEARNING -------------------------- */
+
+void learning_phase(uint64_t addr) {
+  int last_index = offset_score.last;		// index of offset to be considered in the learning phase
+  int test_offset = OFFSET[last_index];
+  uint64_t test_addr = addr - test_offset;	// obtaining base address by subtracting offset from addr
+
+  // if addr and base address are in same page and addr is present in RR table, increment offset score for test_offset
+  if (SAMEPAGE(addr,test_addr) && rr_hit(test_addr)) {
+    offset_score.score[last_index]++;
+    
+    // if offset score of test_offset is greater than maximum for that learning phase, update max_score
+    if (offset_score.score[last_index] >= offset_score.max_score) {
+      offset_score.max_score = offset_score.score[last_index];
+      offset_score.best_offset = test_offset;		// update best offset for that learning phase
+    }
+  }
+
+  // increment last to index of next offset to be checked
+  INCREMENT(offset_score.last,NOFFSETS); 
+
+  // end round if all offsets have been checked
+  if (last_index == (NOFFSETS-1)) {
+    offset_score.round++;
+
+    // end learning phase if SCOREMAX or ROUNDMAX is reached
+    if ((offset_score.max_score == SCOREMAX) || (offset_score.round == ROUNDMAX)) {
+      // update the actual prefetch offset being used to best_offset if prefetch is on or to default if prefetch is off
+      prefetch_offset = (offset_score.best_offset != 0)? offset_score.best_offset : DEFAULT_OFFSET;
+
+      // prefetch throttle - if max score is less than BADSCORE, set prefetch offset being used to 0
+      if (offset_score.max_score <= BADSCORE) {
+	prefetch_offset = 0;
+      }
+      // reset offset table for new learning phase
+      offset_reset();
+      return;
+    }
+  }
+}
+
+/*
+   Function to get the address line to be prefetched next
+*/
+uint64_t issue_prefetch(uint64_t addr) {
+  // if addr and the address to be prefetched are on different pages, do not issue prefetch request, so return
+  if (! SAMEPAGE(addr, addr + prefetch_offset)) {
+    return 0;
+  }
+
+  if (addr == 0) { // control should not reach here
+    assert(0);
+  }
+  dq_push(addr);
+
+  // if prefetch_offset = 0, indicates that prefetcher is off
+  if (prefetch_offset == 0) {
+    return 0; 
+  }
+  
+  return (addr + prefetch_offset);		// return address to be prefetched
+}
+
+void CACHE::l2c_prefetcher_initialize() 
+{
+    rr_initialize();
+    offset_reset();
+    dq_initialize();
+}
+
+/*
+   Function for requesting prefetch requests. Prefetch is issued only if addr is L1 miss or prefetch hit.
+*/
+void CACHE::l2c_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit, uint8_t type)
+{
+   uint64_t line_addr = addr >> LOG2_BLOCK_SIZE;
+   uint64_t prefetch_issued = 0;
+   int set = get_set(line_addr);
+   int way = get_way(addr,set);
+   int l2_hit, prefetched = 0;
+
+   if ((int)NUM_SET < (int) set) {
+        assert(0);
+   }
+
+   if ((int)NUM_WAY < (int)way) {
+        assert(0);
+   }
+
+   if(way>=0) { 
+	l2_hit=1;		// if way is positive, it is L2 hit
+   }
+  
+   if (l2_hit) {
+     prefetched = block[set][way].prefetch;		// prefetched=1 if addr is prefetch hit
+     block[set][way].prefetch = 0;			// reset prefetch bit  
+   } 
+
+   dq_pop();		// dequeue the addresses from delay queue to fill RR table
+
+   // Prefetch issued on L1 miss or prefecthed hit
+   if (! cache_hit || prefetched) {
+     learning_phase(line_addr);
+     prefetch_issued = issue_prefetch(line_addr);	// address of the next line to be prefetched
+
+     if (prefetch_issued) {
+       prefetch_line(ip, addr, (prefetch_issued << LOG2_BLOCK_SIZE), FILL_L2);	// request prefetch 
+     }
+   }  	
+}
+
+
+void CACHE::l2c_prefetcher_cache_fill(uint64_t addr, uint32_t set, uint32_t way, uint8_t prefetch, uint64_t evicted_addr)
+{
+    uint64_t line_addr = addr >> LOG2_BLOCK_SIZE;
+
+    if ((int) NUM_SET < (int) set) {
+         assert(0);
+    }
+
+    if ((int) NUM_WAY < (int) way) {
+         assert(0);
+    }
+
+    // set prefetch bit 
+    block[set][way].prefetch = prefetch;
+    
+    // if addr is prefetced or if prefetch_offset is 0, insert base address in RR table
+    if (prefetch || (prefetch_offset == 0)) {
+        uint64_t baseaddr = (line_addr - prefetch_offset);
+   
+        // insert only if line address and base address are in the same page
+        if (SAMEPAGE(line_addr,baseaddr)) {
+            rr_insert(baseaddr);
+        }
+  }
+}
+
+void CACHE::l2c_prefetcher_final_stats()
+{
+	
+}
