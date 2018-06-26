@@ -194,6 +194,8 @@ void reset_cache_stats(uint32_t cpu, CACHE *cache)
     cache->block_access_count.clear();
     cache->block_reuse_distance.clear();
     cache->block_last_access.clear();
+
+    cache->access_pattern.clear();
 }
 
 void finish_warmup()
