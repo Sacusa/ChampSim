@@ -99,9 +99,12 @@ class CACHE : public MEMORY {
     
     // reuse distance stats
     uint64_t total_access_count;   // total demand accesses to the cache
-    map <uint64_t, uint64_t> block_access_count;    // number of times a set is accessed
-    map <uint64_t, uint64_t> block_reuse_distance;  // sum of all reuse distances of a set
-    map <uint64_t, uint64_t> block_last_access;     // total_access_count value the last time a set was accessed
+    map <uint64_t, uint64_t> block_access_count;    // number of times a block is accessed
+    map <uint64_t, uint64_t> block_reuse_distance;  // sum of all reuse distances of a block
+    map <uint64_t, uint64_t> block_last_access;     // total_access_count value the last time a block was accessed
+
+    // access pattern stats
+    vector <uint64_t> access_pattern;  // sequence of demand access addresses
 
     // queues
     PACKET_QUEUE WQ{NAME + "_WQ", WQ_SIZE}, // write queue

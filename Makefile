@@ -14,6 +14,7 @@ libs =
 libDir =
 
 define_print_reuse_stats =
+define_print_access_pattern =
 
 
 #************************ DO NOT EDIT BELOW THIS LINE! ************************
@@ -28,10 +29,15 @@ ifeq ($(print_reuse_stats),1)
 else
 	define_print_reuse_stats=
 endif
+ifeq ($(print_access_pattern),1)
+	define_print_access_pattern=-D PRINT_ACCESS_PATTERN
+else
+	define_print_access_pattern=
+endif
 inc := $(addprefix -I,$(inc))
 libs := $(addprefix -l,$(libs))
 libDir := $(addprefix -L,$(libDir))
-CFlags += -c $(debug) $(inc) $(libDir) $(libs) $(define_print_reuse_stats)
+CFlags += -c $(debug) $(inc) $(libDir) $(libs) $(define_print_reuse_stats) $(define_print_access_pattern)
 sources := $(shell find $(srcDir) -name '*.$(srcExt)')
 srcDirs := $(shell find . -name '*.$(srcExt)' -exec dirname {} \; | uniq)
 objects := $(patsubst %.$(srcExt),$(objDir)/%.o,$(sources))

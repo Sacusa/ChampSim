@@ -45,7 +45,7 @@ void print_reuse_stats(CACHE *cache)
         avg_reuse_distance += reuse_distance;
         ++num_sets;  // to calculate average reuse distance of the entire cache
 
-        cout << "  " << cache->NAME << " ADDRESS: " << setw(16) << dist_itr->first << "  " << setw(6) << reuse_distance << endl;
+        cout << "  " << cache->NAME << " REUSE DISTANCE ADDRESS: " << setw(16) << dist_itr->first << "  " << setw(6) << reuse_distance << endl;
 
         if (reuse_distance < min_reuse_distance) {
             min_reuse_distance = reuse_distance;
@@ -62,6 +62,17 @@ void print_reuse_stats(CACHE *cache)
     cout << " REUSE DISTANCE  AVG: " << setw(6) << avg_reuse_distance;
     cout << "  MIN: " << setw(6) << min_reuse_distance;
     cout << "  MAX: " << setw(6) << max_reuse_distance << endl;
+}
+
+void print_access_pattern(CACHE *cache)
+{
+    cout << cache->NAME << " ACCESS PATTERN" << endl;
+    uint64_t ap_size = cache->access_pattern.size();
+    vector <uint64_t> :: iterator ap_itr;
+
+    for (uint64_t i = 0; i < ap_size; ++i) {
+        cout << "  " << cache->NAME << " ACCESS PATTERN COUNT: " << setw(16) << i << "  " << setw(16) << cache->access_pattern.at(i) << endl;
+    }
 }
 
 void print_roi_stats(uint32_t cpu, CACHE *cache)
@@ -95,6 +106,9 @@ void print_roi_stats(uint32_t cpu, CACHE *cache)
 
     #ifdef PRINT_REUSE_STATS
         print_reuse_stats(cache);
+    #endif
+    #ifdef PRINT_ACCESS_PATTERN
+        print_access_pattern(cache);
     #endif
 }
 

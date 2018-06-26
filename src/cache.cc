@@ -415,7 +415,7 @@ void CACHE::handle_read()
             uint32_t set = get_set(RQ.entry[index].address);
             int way = check_hit(&RQ.entry[index]);
 
-            // update stats for reuse distance
+            // update stats for reuse distance and access pattern
             if (RQ.entry[index].type == LOAD) {
                 uint64_t block_access_count_val, block_reuse_distance_val;
                 total_access_count++;
@@ -440,6 +440,9 @@ void CACHE::handle_read()
 
                 // update the last access to this block
                 block_last_access.insert(pair <uint64_t, uint64_t> (RQ.entry[index].address, total_access_count));
+
+                // update access pattern
+                access_pattern.push_back(RQ.entry[index].address);
             }
             
             if (way >= 0) { // read hit

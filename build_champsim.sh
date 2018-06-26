@@ -1,11 +1,12 @@
 #!/bin/sh
 # ChampSim configuration
-BRANCH=$1             # branch/*.bpred
-L1D_PREFETCHER=$2     # prefetcher/*.l1d_pref
-L2C_PREFETCHER=$3     # prefetcher/*.l2c_pref
-LLC_REPLACEMENT=$4    # replacement/*.llc_repl
-NUM_CORE=$5           # tested up to 8-core system
-PRINT_REUSE_STATS=$6  # if 1, then reuse distance stats are printed
+BRANCH=$1                # branch/*.bpred
+L1D_PREFETCHER=$2        # prefetcher/*.l1d_pref
+L2C_PREFETCHER=$3        # prefetcher/*.l2c_pref
+LLC_REPLACEMENT=$4       # replacement/*.llc_repl
+NUM_CORE=$5              # tested up to 8-core system
+PRINT_REUSE_STATS=$6     # print reuse distance stats
+PRINT_ACCESS_PATTERN=$7  # print sequence of demand access addresses
 
 ############## Some useful macros ###############
 BOLD=$(tput bold)
@@ -67,11 +68,31 @@ cp prefetcher/${L1D_PREFETCHER}.l1d_pref prefetcher/l1d_prefetcher.cc
 cp prefetcher/${L2C_PREFETCHER}.l2c_pref prefetcher/l2c_prefetcher.cc
 cp replacement/${LLC_REPLACEMENT}.llc_repl replacement/llc_replacement.cc
 
+# Check for additional print options
+if [ "$PRINT_REUSE_STATS" = "reuse" ]
+then
+	PRINT_REUSE_STATS=1
+elif [ "$PRINT_REUSE_STATS" = "no" ]
+	PRINT_REUSE_STATS=0
+else
+	echo "Invalid option for PRINT_REUSE_STATS"
+	exit 1
+fi
+if [ "$PRINT_ACCESS_PATTERN" = "ap" ]
+then
+	PRINT_ACCESS_PATTERN=1
+elif [ "$PRINT_ACCESS_PATTERN" = "no" ]
+	PRINT_ACCESS_PATTERN=0
+else
+	echo "Invalid option for PRINT_ACCESS_PATTERN"
+	exit 1
+fi
+
 # Build
 mkdir -p bin
 rm -f bin/champsim
 make clean
-make print_reuse_stats=$PRINT_REUSE_STATS
+make print_reuse_stats=$PRINT_REUSE_STATS print_access_pattern=$PRINT_ACCESS_PATTERN
 
 # Sanity check
 echo ""
