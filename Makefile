@@ -13,6 +13,8 @@ LDFlags =
 libs =
 libDir =
 
+define_print_reuse_stats =
+
 
 #************************ DO NOT EDIT BELOW THIS LINE! ************************
 
@@ -21,10 +23,15 @@ ifeq ($(debug),1)
 else
 	debug=
 endif
+ifeq ($(print_reuse_stats),1)
+	define_print_reuse_stats=-D PRINT_REUSE_STATS
+else
+	define_print_reuse_stats=
+endif
 inc := $(addprefix -I,$(inc))
 libs := $(addprefix -l,$(libs))
 libDir := $(addprefix -L,$(libDir))
-CFlags += -c $(debug) $(inc) $(libDir) $(libs)
+CFlags += -c $(debug) $(inc) $(libDir) $(libs) $(define_print_reuse_stats)
 sources := $(shell find $(srcDir) -name '*.$(srcExt)')
 srcDirs := $(shell find . -name '*.$(srcExt)' -exec dirname {} \; | uniq)
 objects := $(patsubst %.$(srcExt),$(objDir)/%.o,$(sources))

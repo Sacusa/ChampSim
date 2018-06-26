@@ -1,10 +1,11 @@
 #!/bin/sh
 # ChampSim configuration
-BRANCH=$1           # branch/*.bpred
-L1D_PREFETCHER=$2   # prefetcher/*.l1d_pref
-L2C_PREFETCHER=$3   # prefetcher/*.l2c_pref
-LLC_REPLACEMENT=$4  # replacement/*.llc_repl
-NUM_CORE=$5         # tested up to 8-core system
+BRANCH=$1             # branch/*.bpred
+L1D_PREFETCHER=$2     # prefetcher/*.l1d_pref
+L2C_PREFETCHER=$3     # prefetcher/*.l2c_pref
+LLC_REPLACEMENT=$4    # replacement/*.llc_repl
+NUM_CORE=$5           # tested up to 8-core system
+PRINT_REUSE_STATS=$6  # if 1, then reuse distance stats are printed
 
 ############## Some useful macros ###############
 BOLD=$(tput bold)
@@ -70,7 +71,7 @@ cp replacement/${LLC_REPLACEMENT}.llc_repl replacement/llc_replacement.cc
 mkdir -p bin
 rm -f bin/champsim
 make clean
-make
+make print_reuse_stats=$PRINT_REUSE_STATS
 
 # Sanity check
 echo ""
