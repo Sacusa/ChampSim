@@ -73,6 +73,7 @@ if [ "$PRINT_REUSE_STATS" = "reuse" ]
 then
 	PRINT_REUSE_STATS=1
 elif [ "$PRINT_REUSE_STATS" = "no" ]
+then
 	PRINT_REUSE_STATS=0
 else
 	echo "Invalid option for PRINT_REUSE_STATS"
@@ -82,6 +83,7 @@ if [ "$PRINT_ACCESS_PATTERN" = "ap" ]
 then
 	PRINT_ACCESS_PATTERN=1
 elif [ "$PRINT_ACCESS_PATTERN" = "no" ]
+then
 	PRINT_ACCESS_PATTERN=0
 else
 	echo "Invalid option for PRINT_ACCESS_PATTERN"
