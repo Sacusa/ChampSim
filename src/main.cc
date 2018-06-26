@@ -227,6 +227,9 @@ void finish_warmup()
         reset_cache_stats(i, &ooo_cpu[i].L1I);
         reset_cache_stats(i, &ooo_cpu[i].L1D);
         reset_cache_stats(i, &ooo_cpu[i].L2C);
+        reset_cache_stats(i, &ooo_cpu[i].DTLB);
+        reset_cache_stats(i, &ooo_cpu[i].ITLB);
+        reset_cache_stats(i, &ooo_cpu[i].STLB);
         reset_cache_stats(i, &uncore.LLC);
     }
     cout << endl;
