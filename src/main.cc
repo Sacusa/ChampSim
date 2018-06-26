@@ -108,7 +108,10 @@ void print_roi_stats(uint32_t cpu, CACHE *cache)
         print_reuse_stats(cache);
     #endif
     #ifdef PRINT_ACCESS_PATTERN
-        print_access_pattern(cache);
+        // no need of access pattern for L1I or ITLB
+        if (!((cache->cache_type == IS_L1I) || (cache->cache_type == IS_ITLB))) {
+            print_access_pattern(cache);
+        }
     #endif
 }
 
