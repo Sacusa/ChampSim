@@ -440,13 +440,6 @@ void CACHE::handle_read()
 
                 // update the last access to this block
                 block_last_access.insert(pair <uint64_t, uint64_t> (RQ.entry[index].address, total_access_count));
-
-                // update access pattern on cache miss (except for L1I and ITLB)
-                if (!((cache_type == IS_L1I) || (cache_type == IS_ITLB))) {
-                    if (way < 0) {
-                        access_pattern.push_back(RQ.entry[index].address);
-                    }
-                }
             }
             
             if (way >= 0) { // read hit
@@ -528,6 +521,10 @@ void CACHE::handle_read()
                 int mshr_index = check_mshr(&RQ.entry[index]);
 
                 if ((mshr_index == -1) && (MSHR.occupancy < MSHR_SIZE)) { // this is a new miss
+                    // update access pattern (except for L1I and ITLB)
+                    if (!((cache_type == IS_L1I) || (cache_type == IS_ITLB))) {
+                        access_pattern.push_back(RQ.entry[index].address);
+                    }
 
                     // add it to mshr (read miss)
                     add_mshr(&RQ.entry[index]);
