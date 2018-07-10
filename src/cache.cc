@@ -415,7 +415,7 @@ void CACHE::handle_read()
             uint32_t set = get_set(RQ.entry[index].address);
             int way = check_hit(&RQ.entry[index]);
 
-            // update stats for reuse distance and access pattern
+            // update stats for reuse distance
             if (RQ.entry[index].type == LOAD) {
                 uint64_t block_access_count_val, block_reuse_distance_val;
                 total_access_count++;
@@ -521,9 +521,11 @@ void CACHE::handle_read()
                 int mshr_index = check_mshr(&RQ.entry[index]);
 
                 if ((mshr_index == -1) && (MSHR.occupancy < MSHR_SIZE)) { // this is a new miss
-                    // update access pattern (except for L1I and ITLB)
-                    if (!((cache_type == IS_L1I) || (cache_type == IS_ITLB))) {
-                        access_pattern.push_back(RQ.entry[index].address);
+                    if (RQ.entry[index].type == LOAD) {
+                        // update access pattern (except for L1I and ITLB)
+                        if (!((cache_type == IS_L1I) || (cache_type == IS_ITLB))) {
+                            access_pattern.insert(pair <uint64_t, uint64_t> (total_access_count, RQ.entry[index].address));
+                        }
                     }
 
                     // add it to mshr (read miss)

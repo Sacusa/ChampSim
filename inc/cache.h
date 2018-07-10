@@ -104,7 +104,7 @@ class CACHE : public MEMORY {
     map <uint64_t, uint64_t> block_last_access;     // total_access_count value the last time a block was accessed
 
     // access pattern stats
-    vector <uint64_t> access_pattern;  // sequence of demand access addresses
+    map <uint64_t, uint64_t> access_pattern;  // sequence of demand access addresses
 
     // queues
     PACKET_QUEUE WQ{NAME + "_WQ", WQ_SIZE}, // write queue

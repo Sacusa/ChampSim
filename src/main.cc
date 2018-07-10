@@ -67,11 +67,10 @@ void print_reuse_stats(CACHE *cache)
 void print_access_pattern(CACHE *cache)
 {
     cout << cache->NAME << " ACCESS PATTERN" << endl;
-    uint64_t ap_size = cache->access_pattern.size();
-    vector <uint64_t> :: iterator ap_itr;
+    map <uint64_t, uint64_t> :: iterator ap_itr;
 
-    for (uint64_t i = 0; i < ap_size; ++i) {
-        cout << "  " << cache->NAME << " ACCESS PATTERN COUNT: " << setw(16) << i << "  " << setw(16) << cache->access_pattern.at(i) << endl;
+    for (ap_itr = cache->access_pattern.begin(); ap_itr != cache->access_pattern.end(); ++ap_itr) {
+        cout << "  " << cache->NAME << " ACCESS PATTERN COUNT: " << setw(16) << ap_itr->first << "  " << setw(16) << ap_itr->second << endl;
     }
 }
 
