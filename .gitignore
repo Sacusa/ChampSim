@@ -4,4 +4,6 @@ inc/champsim.h.bak
 obj/
 results*/
 run_champsim.sh
+run_champsim_cluster.sh
 surge/
+surge_cluster.zip

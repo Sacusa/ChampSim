@@ -1859,6 +1859,7 @@ void O3_CPU::retire_rob()
                         data_packet.asid[0] = SQ.entry[sq_index].asid[0];
                         data_packet.asid[1] = SQ.entry[sq_index].asid[1];
                         data_packet.event_cycle = current_core_cycle[cpu];
+                        data_packet.dirty_block = 1;
 
                         L1D.add_wq(&data_packet);
                     }

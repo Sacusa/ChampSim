@@ -25,6 +25,7 @@
 #define LLC_BYPASS
 #define DRC_BYPASS
 #define NO_CRC2_COMPILE
+#define EXCLUSIVE_CACHE  // makes LLC exclusive of L1/L2
 
 #ifdef DEBUG_PRINT
 #define DP(x) x

@@ -69,7 +69,9 @@ class PACKET {
             translated,
             fetched,
             prefetched,
-            drc_tag_read;
+            drc_tag_read,
+            dirty_block;  // for exclusive LLC;
+                          // signifies if writeback packet represents a dirty block
 
     int fill_level, 
         rob_signal, 
@@ -115,6 +117,7 @@ class PACKET {
         fetched = 0;
         prefetched = 0;
         drc_tag_read = 0;
+        dirty_block = 0;
 
         returned = 0;
         asid[0] = UINT8_MAX;
