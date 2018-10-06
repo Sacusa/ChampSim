@@ -470,7 +470,11 @@ void CACHE::handle_writeback()
                     fill_cache(set, way, &WQ.entry[index]);
 
                     // mark dirty
-                    block[set][way].dirty = 1; 
+#ifdef EXCLUSIVE_CACHE
+                    block[set][way].dirty = WQ.entry[index].dirty_block;
+#else
+                    block[set][way].dirty = 1;
+#endif
 
                     // check fill level
                     if (WQ.entry[index].fill_level < fill_level) {
