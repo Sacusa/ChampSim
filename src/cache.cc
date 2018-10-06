@@ -83,6 +83,9 @@ void CACHE::handle_fill()
         }
 #endif
 
+#ifdef INCLUSIVE_CACHE
+#endif
+
 #ifdef LLC_BYPASS
         if ((cache_type == IS_LLC) && (way == LLC_WAY)) { // this is a bypass that does not fill the LLC
             // update replacement policy
@@ -116,7 +119,7 @@ void CACHE::handle_fill()
 #endif
 
         // is this dirty?
-        if (block[set][way].dirty) {
+        if (block[set][way].valid && block[set][way].dirty) {
 
             // check if the lower level WQ has enough room to keep this writeback request
             if (lower_level) {
@@ -406,7 +409,7 @@ void CACHE::handle_writeback()
 #endif
 
                 // is this dirty?
-                if (block[set][way].dirty) {
+                if (block[set][way].valid && block[set][way].dirty) {
 
                     // check if the lower level WQ has enough room to keep this writeback request
                     if (lower_level) { 
