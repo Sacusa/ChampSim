@@ -26,8 +26,8 @@
 #define NO_CRC2_COMPILE
 
 // CACHE CONFIGURATIONS
-#define EXCLUSIVE_CACHE  // makes LLC exclusive of L1/L2
-//#define INCLUSIVE_CACHE  // makes LLC inclusive of L1/L2
+//#define EXCLUSIVE_CACHE  // makes LLC exclusive of L1/L2
+#define INCLUSIVE_CACHE  // makes LLC inclusive of L2, and L2 inclusive of L1
 #ifndef INCLUSIVE_CACHE
 #define LLC_BYPASS
 #endif
