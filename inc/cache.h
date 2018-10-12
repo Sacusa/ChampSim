@@ -223,9 +223,9 @@ class CACHE : public MEMORY {
              llc_find_victim(uint32_t cpu, uint64_t instr_id, uint32_t set, const BLOCK *current_set, uint64_t ip, uint64_t full_addr, uint32_t type),
              lru_victim(uint32_t cpu, uint64_t instr_id, uint32_t set, const BLOCK *current_set, uint64_t ip, uint64_t full_addr, uint32_t type);
     
-    void back_invalidate(uint64_t address, uint64_t instr_id, uint8_t type);
+    void back_invalidate(uint64_t address);
     
-    uint8_t invalidate_and_return_data(uint32_t cpu, uint64_t address, uint64_t *data),
+    uint8_t invalidate_and_return_data(uint32_t cpu, uint64_t address, uint64_t *data, int *data_cache),
             higher_level_dirty(uint64_t address);
 };
 

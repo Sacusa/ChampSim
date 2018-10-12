@@ -117,7 +117,7 @@ void CACHE::handle_fill()
 
         // is this dirty?
 #ifdef INCLUSIVE_CACHE
-        if (block[set][way].valid && higher_level_dirty(MSHR.entry[mshr_index].address)) {
+        if (block[set][way].valid && higher_level_dirty(block[set][way].address)) {
 #else
         if (block[set][way].valid && block[set][way].dirty) {
 #endif
@@ -138,7 +138,7 @@ void CACHE::handle_fill()
                 }
                 else {
 #ifdef INCLUSIVE_CACHE
-                    back_invalidate(MSHR.entry[mshr_index].address, MSHR.entry[mshr_index].instr_id, MSHR.entry[mshr_index].type);
+                    back_invalidate(block[set][way].address);
 #endif
                     PACKET writeback_packet;
 
@@ -360,10 +360,6 @@ void CACHE::handle_writeback()
 
             }
             else {
-#ifdef INCLUSIVE_CACHE
-                cerr << "Writeback miss in an inclusive cache hierarchy. Something went wrong!" << endl;
-                assert(0);
-#endif
                 // find victim
                 uint32_t set = get_set(WQ.entry[index].address), way;
                 if (cache_type == IS_LLC) {
@@ -417,7 +413,11 @@ void CACHE::handle_writeback()
 #endif
 
                 // is this dirty?
+#ifdef INCLUSIVE_CACHE
+                if (block[set][way].valid && higher_level_dirty(block[set][way].address)) {
+#else
                 if (block[set][way].valid && block[set][way].dirty) {
+#endif
 
                     // check if the lower level WQ has enough room to keep this writeback request
                     if (lower_level) { 
@@ -433,7 +433,10 @@ void CACHE::handle_writeback()
                             cout << " lower level wq is full!" << " fill_addr: " << hex << WQ.entry[index].address;
                             cout << " victim_addr: " << block[set][way].tag << dec << endl; });
                         }
-                        else { 
+                        else {
+#ifdef INCLUSIVE_CACHE
+                            back_invalidate(block[set][way].address);
+#endif
                             PACKET writeback_packet;
 
                             writeback_packet.fill_level = fill_level << 1;
@@ -1532,10 +1535,11 @@ void CACHE::increment_WQ_FULL(uint64_t address)
     WQ.FULL++;
 }
 
-void CACHE::back_invalidate(uint64_t address, uint64_t instr_id, uint8_t type)
+void CACHE::back_invalidate(uint64_t address)
 {
     uint8_t upper_level_dirty = 0;
     uint64_t data = 0, full_addr = 0;
+    int data_cache = FILL_DRAM;
 
     // get set and way
     uint32_t set = get_set(address), way;
@@ -1548,10 +1552,10 @@ void CACHE::back_invalidate(uint64_t address, uint64_t instr_id, uint8_t type)
     if (cache_type == IS_LLC) {
         // invalidate the block in all higher cache levels of all CPUs and fetch the latest data
         for (int cpu = 0; cpu < NUM_CPUS; cpu++) {
-            upper_level_dirty = ((CACHE *)upper_level_icache[cpu])->invalidate_and_return_data(cpu, address, &data);
+            upper_level_dirty = ((CACHE *)upper_level_icache[cpu])->invalidate_and_return_data(cpu, address, &data, &data_cache);
             
             if (upper_level_dcache[cpu] != upper_level_icache[cpu]) {
-                upper_level_dirty = ((CACHE *)upper_level_dcache[cpu])->invalidate_and_return_data(cpu, address, &data);
+                upper_level_dirty = ((CACHE *)upper_level_dcache[cpu])->invalidate_and_return_data(cpu, address, &data, &data_cache);
             }
 
             // update cache if block is dirty
@@ -1564,10 +1568,10 @@ void CACHE::back_invalidate(uint64_t address, uint64_t instr_id, uint8_t type)
 
     else if (cache_type == IS_L2C) {
         // invalidate the block in all higher cache levels and fetch the latest data
-        upper_level_dirty = ((CACHE *)upper_level_icache[cpu])->invalidate_and_return_data(cpu, address, &data);
+        upper_level_dirty = ((CACHE *)upper_level_icache[cpu])->invalidate_and_return_data(cpu, address, &data, &data_cache);
             
         if (upper_level_dcache[cpu] != upper_level_icache[cpu]) {
-            upper_level_dirty = ((CACHE *)upper_level_dcache[cpu])->invalidate_and_return_data(cpu, address, &data);
+            upper_level_dirty = ((CACHE *)upper_level_dcache[cpu])->invalidate_and_return_data(cpu, address, &data, &data_cache);
         }
 
         // update cache if block is dirty
@@ -1578,40 +1582,37 @@ void CACHE::back_invalidate(uint64_t address, uint64_t instr_id, uint8_t type)
     }
 }
 
-uint8_t CACHE::invalidate_and_return_data(uint32_t cpu, uint64_t address, uint64_t *data)
+uint8_t CACHE::invalidate_and_return_data(uint32_t cpu, uint64_t address, uint64_t *data, int *data_cache)
 {
     uint8_t upper_level_dirty = 0;
 
     if (upper_level_icache[cpu]) {
-        upper_level_dirty = ((CACHE *)upper_level_icache[cpu])->invalidate_and_return_data(cpu, address, data);
+        upper_level_dirty = ((CACHE *)upper_level_icache[cpu])->invalidate_and_return_data(cpu, address, data, data_cache);
 
         if (upper_level_dcache[cpu] != upper_level_icache[cpu]) {
-            upper_level_dirty = ((CACHE *)upper_level_dcache[cpu])->invalidate_and_return_data(cpu, address, data);
+            upper_level_dirty = ((CACHE *)upper_level_dcache[cpu])->invalidate_and_return_data(cpu, address, data, data_cache);
         }
-    }
-
-    if (upper_level_dirty) {
-        return 1;
     }
 
     uint8_t dirty = 0;
     uint32_t set = get_set(address), way;
 
-    // invalidate the block and record its data if it is dirty
+    // invalidate the block and record its data and fill level if it is dirty
     for (way = 0; way < NUM_WAY; way++) {
         if (block[set][way].valid && (block[set][way].tag == address)) {
             block[set][way].valid = 0;
 
-            if (block[set][way].dirty) {
+            if (block[set][way].dirty && !upper_level_dirty && (fill_level <= *data_cache)) {
                 dirty = 1;
                 *data = block[set][way].data;
+                *data_cache = fill_level;
             }
 
             break;
         }
     }
 
-    return dirty;
+    return (dirty || upper_level_dirty);
 }
 
 uint8_t CACHE::higher_level_dirty(uint64_t address)
@@ -1621,9 +1622,7 @@ uint8_t CACHE::higher_level_dirty(uint64_t address)
 
         for (int cpu = 0; cpu < NUM_CPUS; cpu++) {
             // icache is never dirty, so check dcache only
-            if (upper_level_dcache[cpu]) {
-                upper_level_dirty = ((CACHE *)upper_level_dcache[cpu])->higher_level_dirty(address);
-            }
+            upper_level_dirty = ((CACHE *)upper_level_dcache[cpu])->higher_level_dirty(address);
 
             if (upper_level_dirty) {
                 return 1;
