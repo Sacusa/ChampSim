@@ -13,8 +13,10 @@ LDFlags =
 libs =
 libDir =
 
-define_print_reuse_stats =
-define_print_access_pattern =
+def_print_reuse_stats =
+def_print_access_pattern =
+def_inclusive_cache =
+def_exclusive_cache =
 
 
 #************************ DO NOT EDIT BELOW THIS LINE! ************************
@@ -24,20 +26,35 @@ ifeq ($(debug),1)
 else
 	debug=
 endif
+
 ifeq ($(print_reuse_stats),1)
-	define_print_reuse_stats=-D PRINT_REUSE_STATS
+	def_print_reuse_stats=-D PRINT_REUSE_STATS
 else
-	define_print_reuse_stats=
+	def_print_reuse_stats=
 endif
+
 ifeq ($(print_access_pattern),1)
-	define_print_access_pattern=-D PRINT_ACCESS_PATTERN
+	def_print_access_pattern=-D PRINT_ACCESS_PATTERN
 else
-	define_print_access_pattern=
+	def_print_access_pattern=
 endif
+
+ifeq ($(cache_config),1)
+	def_inclusive_cache=-D INCLUSIVE_CACHE
+else
+	def_inclusive_cache=
+endif
+
+ifeq ($(cache_config),2)
+	def_exclusive_cache=-D EXCLUSIVE_CACHE
+else
+	def_exclusive_cache=
+endif
+
 inc := $(addprefix -I,$(inc))
 libs := $(addprefix -l,$(libs))
 libDir := $(addprefix -L,$(libDir))
-CFlags += -c $(debug) $(inc) $(libDir) $(libs) $(define_print_reuse_stats) $(define_print_access_pattern)
+CFlags += -c $(debug) $(inc) $(libDir) $(libs) $(def_print_reuse_stats) $(def_print_access_pattern) $(def_inclusive_cache) $(def_exclusive_cache)
 sources := $(shell find $(srcDir) -name '*.$(srcExt)')
 srcDirs := $(shell find . -name '*.$(srcExt)' -exec dirname {} \; | uniq)
 objects := $(patsubst %.$(srcExt),$(objDir)/%.o,$(sources))

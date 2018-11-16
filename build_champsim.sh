@@ -5,8 +5,9 @@ L1D_PREFETCHER=$2        # prefetcher/*.l1d_pref
 L2C_PREFETCHER=$3        # prefetcher/*.l2c_pref
 LLC_REPLACEMENT=$4       # replacement/*.llc_repl
 NUM_CORE=$5              # tested up to 8-core system
-PRINT_REUSE_STATS=$6     # print reuse distance stats
-PRINT_ACCESS_PATTERN=$7  # print sequence of demand access addresses
+CACHE_CONFIG=$6          # ni, in, ex
+PRINT_REUSE_STATS=$7     # print reuse distance stats
+PRINT_ACCESS_PATTERN=$8  # print sequence of demand access addresses
 
 ############## Some useful macros ###############
 BOLD=$(tput bold)
@@ -68,23 +69,46 @@ cp prefetcher/${L1D_PREFETCHER}.l1d_pref prefetcher/l1d_prefetcher.cc
 cp prefetcher/${L2C_PREFETCHER}.l2c_pref prefetcher/l2c_prefetcher.cc
 cp replacement/${LLC_REPLACEMENT}.llc_repl replacement/llc_replacement.cc
 
+# Collect cache configuration
+# 0 = ni
+# 1 = in
+# 2 = ex
+MF_CACHE_CONFIG=0
+
+if [ "$CACHE_CONFIG" = "ni" ]
+then
+	MF_CACHE_CONFIG=0
+elif [ "$CACHE_CONFIG" = "in" ]
+then
+	MF_CACHE_CONFIG=1
+elif [ "$CACHE_CONFIG" = "ex" ]
+then
+	MF_CACHE_CONFIG=2
+else
+	echo "Invalid option for CACHE_CONFIG"
+	exit 1
+fi
+
 # Check for additional print options
+MF_PRINT_REUSE_STATS=0
+MF_PRINT_ACCESS_PATTERN=0
+
 if [ "$PRINT_REUSE_STATS" = "reuse" ]
 then
-	PRINT_REUSE_STATS=1
+	MF_PRINT_REUSE_STATS=1
 elif [ "$PRINT_REUSE_STATS" = "no" ]
 then
-	PRINT_REUSE_STATS=0
+	MF_PRINT_REUSE_STATS=0
 else
 	echo "Invalid option for PRINT_REUSE_STATS"
 	exit 1
 fi
 if [ "$PRINT_ACCESS_PATTERN" = "ap" ]
 then
-	PRINT_ACCESS_PATTERN=1
+	MF_PRINT_ACCESS_PATTERN=1
 elif [ "$PRINT_ACCESS_PATTERN" = "no" ]
 then
-	PRINT_ACCESS_PATTERN=0
+	MF_PRINT_ACCESS_PATTERN=0
 else
 	echo "Invalid option for PRINT_ACCESS_PATTERN"
 	exit 1
@@ -94,7 +118,7 @@ fi
 mkdir -p bin
 rm -f bin/champsim
 make clean
-make print_reuse_stats=$PRINT_REUSE_STATS print_access_pattern=$PRINT_ACCESS_PATTERN
+make cache_config=$MF_CACHE_CONFIG print_reuse_stats=$MF_PRINT_REUSE_STATS print_access_pattern=$MF_PRINT_ACCESS_PATTERN
 
 # Sanity check
 echo ""
@@ -110,7 +134,7 @@ echo "L1D Prefetcher: ${L1D_PREFETCHER}"
 echo "L2C Prefetcher: ${L2C_PREFETCHER}"
 echo "LLC Replacement: ${LLC_REPLACEMENT}"
 echo "Cores: ${NUM_CORE}"
-BINARY_NAME="${BRANCH}-${L1D_PREFETCHER}-${L2C_PREFETCHER}-${LLC_REPLACEMENT}-${NUM_CORE}core"
+BINARY_NAME="${BRANCH}-${L1D_PREFETCHER}-${L2C_PREFETCHER}-${LLC_REPLACEMENT}-${NUM_CORE}core-${CACHE_CONFIG}-${PRINT_REUSE_STATS}-${PRINT_ACCESS_PATTERN}"
 echo "Binary: bin/${BINARY_NAME}${NORMAL}"
 echo ""
 mv bin/champsim bin/${BINARY_NAME}

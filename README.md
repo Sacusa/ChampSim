@@ -11,11 +11,15 @@ git clone https://github.com/ChampSim/ChampSim.git
 # Compile
 
 ChampSim takes five parameters: Branch predictor, L1D prefetcher, L2C prefetcher, LLC replacement policy, and the number of cores. 
-For example, `./build_champsim.sh bimodal no no lru 1` builds a single-core processor with bimodal branch predictor, no L1/L2 data prefetchers, and the baseline LRU replacement policy for the LLC.
+For example, `./build_champsim.sh bimodal no no lru 1 ni no no` builds a single-core processor with bimodal branch predictor, no L1/L2 data prefetchers, baseline LRU replacement policy for the LLC, and a non-inclusive cache hierarchy which won't print reuse distance and access pattern stats.
 ```
-$ ./build_champsim.sh bimodal no no lru 1
+$ ./build_champsim.sh bimodal no no lru 1 ni no no
 
-$ ./build_champsim.sh ${BRANCH} ${L1D_PREFETCHER} ${L2C_PREFETCHER} ${LLC_REPLACEMENT} ${NUM_CORE}
+$ ./build_champsim.sh ${BRANCH} ${L1D_PREFETCHER} ${L2C_PREFETCHER} ${LLC_REPLACEMENT} ${NUM_CORE} ${CACHE_CONFIG} ${PRINT_REUSE_STATS} ${PRINT_ACCESS_PATTERN}
+
+${CACHE_CONFIG}: ni, in or ex
+${PRINT_REUSE_STATS}: reuse or no
+${PRINT_ACCESS_PATTERN}: ap or no
 ```
 
 # Run simulation
