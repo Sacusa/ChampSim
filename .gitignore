@@ -7,3 +7,7 @@ run_champsim.sh
 run_champsim_cluster.sh
 surge/
 surge_cluster.zip
+prefetcher/bo.l2c_pref
+prefetcher/isb_new.l2c_pref
+prefetcher/sandbox.l2c_pref
+prefetcher/vldp.l2c_pref
