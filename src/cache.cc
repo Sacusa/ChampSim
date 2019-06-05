@@ -1,6 +1,9 @@
 #include "cache.h"
 #include "set.h"
 
+#include "ooo_cpu.h"
+#include "uncore.h"
+
 uint64_t l2pf_access = 0;
 
 void CACHE::handle_fill()
@@ -521,38 +524,11 @@ void CACHE::handle_read()
 
         // handle the oldest entry
         if ((RQ.entry[RQ.head].event_cycle <= current_core_cycle[read_cpu]) && (RQ.occupancy > 0)) {
-            int index = RQ.head;
+            int index = RQ.head;            
 
             // access cache
             uint32_t set = get_set(RQ.entry[index].address);
             int way = check_hit(&RQ.entry[index]);
-
-            // update stats for reuse distance
-            if (RQ.entry[index].type == LOAD) {
-                uint64_t block_access_count_val, block_reuse_distance_val;
-                total_access_count++;
-                
-                // update the number of times this block address has been accessed
-                if (block_access_count.count(RQ.entry[index].address) != 0) {
-                    block_access_count_val = block_access_count.at(RQ.entry[index].address) + 1;
-                }
-                else {
-                    block_access_count_val = 1;
-                }
-                block_access_count.insert(pair <uint64_t, uint64_t> (RQ.entry[index].address, block_access_count_val));
-
-                // update the sum of reuse distances of this block
-                if (block_last_access.count(RQ.entry[index].address) != 0) {
-                    block_reuse_distance_val = total_access_count - block_last_access.at(RQ.entry[index].address) - 1;
-                    if (block_reuse_distance.count(RQ.entry[index].address) != 0) {
-                        block_reuse_distance_val += block_reuse_distance.at(RQ.entry[index].address);
-                    }
-                    block_reuse_distance.insert(pair <uint64_t, uint64_t> (RQ.entry[index].address, block_reuse_distance_val));
-                }
-
-                // update the last access to this block
-                block_last_access.insert(pair <uint64_t, uint64_t> (RQ.entry[index].address, total_access_count));
-            }
             
             if (way >= 0) { // read hit
 
@@ -584,6 +560,22 @@ void CACHE::handle_read()
                         l1d_prefetcher_operate(block[set][way].full_addr, RQ.entry[index].ip, 1, RQ.entry[index].type);
                     else if (cache_type == IS_L2C)
                         l2c_prefetcher_operate(block[set][way].full_addr, RQ.entry[index].ip, 1, RQ.entry[index].type);
+
+                    total_access_count++;
+                    uint64_t block_address = RQ.entry[index].address;
+                
+#ifdef PRINT_REUSE_STATS
+                    collect_reuse_distance(block_address);
+#endif
+#ifdef PRINT_STRIDE_DISTRIBUTION
+                    collect_stride_distribution(RQ.entry[index].ip, block_address);
+#endif
+#ifdef PRINT_OFFSET_PATTERN
+                    if (cache_type == IS_L2C) {
+                        // collect offset pattern (for L2 only)
+                        collect_offset_pattern(block_address)
+                    }
+#endif
                 }
 
                 // update replacement policy
@@ -640,12 +632,14 @@ void CACHE::handle_read()
                 int mshr_index = check_mshr(&RQ.entry[index]);
 
                 if ((mshr_index == -1) && (MSHR.occupancy < MSHR_SIZE)) { // this is a new miss
+#ifdef PRINT_ACCESS_PATTERN
                     if (RQ.entry[index].type == LOAD) {
                         // update access pattern (except for L1I and ITLB)
                         if (!((cache_type == IS_L1I) || (cache_type == IS_ITLB))) {
                             access_pattern.insert(pair <uint64_t, uint64_t> (total_access_count, RQ.entry[index].address));
                         }
                     }
+#endif
 
                     // add it to mshr (read miss)
                     add_mshr(&RQ.entry[index]);
@@ -763,6 +757,22 @@ void CACHE::handle_read()
                             l1d_prefetcher_operate(RQ.entry[index].full_addr, RQ.entry[index].ip, 0, RQ.entry[index].type);
                         if (cache_type == IS_L2C)
                             l2c_prefetcher_operate(RQ.entry[index].full_addr, RQ.entry[index].ip, 0, RQ.entry[index].type);
+
+                        total_access_count++;
+                        uint64_t block_address = RQ.entry[index].address;
+                
+#ifdef PRINT_REUSE_STATS
+                        collect_reuse_distance(block_address);
+#endif
+#ifdef PRINT_STRIDE_DISTRIBUTION
+                        collect_stride_distribution(RQ.entry[index].ip, block_address);
+#endif
+#ifdef PRINT_OFFSET_PATTERN
+                        if (cache_type == IS_L2C) {
+                            // collect offset pattern (for L2 only)
+                            collect_offset_pattern(block_address)
+                        }
+#endif
                     }
 
                     MISS[RQ.entry[index].type]++;
@@ -928,7 +938,7 @@ void CACHE::operate()
 
 uint32_t CACHE::get_set(uint64_t address)
 {
-    return (uint32_t) (address & ((1 << lg2(NUM_SET)) - 1)); 
+    return (uint32_t) (address & ((1 << lg2(NUM_SET)) - 1));
 }
 
 uint32_t CACHE::get_way(uint64_t address, uint32_t set)
@@ -959,7 +969,7 @@ void CACHE::fill_cache(uint32_t set, uint32_t way, PACKET *packet)
             assert(0);
     }
 #endif
-    if (block[set][way].prefetch && (block[set][way].used == 0))
+    if (block[set][way].valid && block[set][way].prefetch && (block[set][way].used == 0))
         pf_useless++;
 
     if (block[set][way].valid == 0)
@@ -1662,4 +1672,252 @@ uint8_t CACHE::higher_level_dirty(uint64_t address)
     }
 
     return 0;
+}
+
+uint8_t CACHE::get_reuse_distance_bin(uint16_t reuse_distance)
+{
+    if (reuse_distance <= 512) {
+        return 0;
+    }
+    else if (reuse_distance <= 1024) {
+        return 1;
+    }
+    else if (reuse_distance <= 2048) {
+        return 2;
+    }
+    else if (reuse_distance <= 4096) {
+        return 3;
+    }
+    else if (reuse_distance <= 8192) {
+        return 4;
+    }
+    else if (reuse_distance <= 16384) {
+        return 5;
+    }
+    else if (reuse_distance <= 32768) {
+        return 6;
+    }
+    else if (reuse_distance <= 65536) {
+        return 7;
+    }
+    else if (reuse_distance <= 131072) {
+        return 8;
+    }
+    else if (reuse_distance <= 242144) {
+        return 9;
+    }
+
+    return 10;
+}
+
+uint8_t CACHE::get_stride_bin(uint64_t stride)
+{
+    if (stride == 0) {
+        return 0;
+    }
+    else if (stride == 1) {
+        return 1;
+    }
+    else if (stride < 4) {
+        return 2;
+    }
+    else if (stride < 32) {
+        return 3;
+    }
+    else if (stride < 128) {
+        return 4;
+    }
+    else if (stride < 1024) {
+        return 5;
+    }
+    else if (stride < 4096) {
+        return 6;
+    }
+
+    return 7;
+}
+
+void CACHE::collect_reuse_distance(uint64_t block_address)
+{
+    std::vector<uint64_t>::iterator it;
+    for (it = recent_accesses.begin(); it != recent_accesses.end(); it++) {
+        if (*it == block_address) {
+            break;
+        }
+    }
+
+    if (it != recent_accesses.end()) {
+        uint16_t reuse_distance = std::distance(recent_accesses.begin(), it) + 1;
+        reuse_distance_bins[get_reuse_distance_bin(reuse_distance)]++;
+        recent_accesses.erase(it);
+    }
+    else {
+        if (num_of_unique_references == 262144) {
+            recent_accesses.erase(recent_accesses.end() - 1);
+            reuse_distance_bins[num_of_reuse_distance_bins - 1]++;
+        }
+        else {
+            num_of_unique_references++;
+        }
+    }
+
+    recent_accesses.insert(recent_accesses.begin(), block_address);
+}
+
+void CACHE::collect_stride_distribution(uint64_t ip, uint64_t block_address)
+{
+    uint8_t last_bin_index = num_of_stride_distribution_bins - 1;
+
+    // update stats for local stride distribution
+    map<uint64_t, uint64_t>::iterator lla_it = last_local_address.find(ip);
+    
+    if (lla_it != last_local_address.end()) {
+        // update stride history and its index
+        uint64_t stride;
+        if (block_address > lla_it->second) {
+            stride = block_address - lla_it->second;
+        } else {
+            stride = lla_it->second - block_address;
+        }
+        local_stride_history[ip][local_stride_history_index[ip]] = stride;
+        local_stride_history_index[ip] = (local_stride_history_index[ip] == (stride_history_length - 1)) ? 0 : local_stride_history_index[ip] + 1;
+        num_local_strides[ip]++;
+
+        // update bins
+        if (num_local_strides[ip] == stride_history_length) {
+            uint8_t stride_bin_index = last_bin_index;
+
+            if ((local_stride_history[ip][0] == local_stride_history[ip][1]) && \
+                (local_stride_history[ip][1] == local_stride_history[ip][2])) {
+                stride_bin_index = get_stride_bin(stride);
+            }
+
+            local_stride_distribution[stride_bin_index]++;
+            num_local_strides[ip]--;    // to ensure this value stays == stride_history_length
+        }
+    }
+    else {
+        // first encounter with this address => initialize related structures
+        num_local_strides[ip] = 0;
+        local_stride_history[ip] = new uint64_t[stride_history_length];
+        local_stride_history_index[ip] = 0;
+    }
+    last_local_address[ip] = block_address;
+
+    // update stats for global stride distribution
+    if (total_access_count > 1) {
+        // update stride history and its index
+        uint64_t stride;
+        if (block_address > last_global_address) {
+            stride = block_address - last_global_address;
+        } else {
+            stride = last_global_address - block_address;
+        }
+        global_stride_history[global_stride_history_index] = stride;
+        global_stride_history_index = (global_stride_history_index == (stride_history_length - 1)) ? 0 : global_stride_history_index + 1;
+        num_global_strides++;
+
+        // update bins
+        if (num_global_strides == stride_history_length) {
+            uint8_t stride_bin_index = last_bin_index;
+
+            if ((global_stride_history[0] == global_stride_history[1]) && \
+                (global_stride_history[1] == global_stride_history[2])) {
+                stride_bin_index = get_stride_bin(stride);
+            }
+
+            global_stride_distribution[stride_bin_index]++;
+            num_global_strides--;    // to ensure this value stays == stride_history_length
+        }
+    }
+    last_global_address = block_address;
+}
+
+void CACHE::collect_offset_pattern(uint64_t block_address)
+{
+    if (is_first_access) {
+        last_address = block_address;
+        is_first_access = false;
+    }
+    else {
+        offset_pattern.push_back(block_address - last_address);
+        last_address = block_address;
+    }
+}
+
+void CACHE::check_inclusive()
+{
+    cout << "check_inclusive" << endl;
+    for (int i = 0; i < NUM_CPUS; i++)
+    {
+        //cout<<"1";
+        //L1I data should be present L2C
+        for (int l1iset = 0; l1iset < L1I_SET; l1iset++)
+            for (int l1iway = 0; l1iway < L1I_WAY; l1iway++)
+                if (ooo_cpu[i].L1I.block[l1iset][l1iway].valid == 1)
+                {
+                    //cout<<"2";
+                    int match = 0;
+                    for (int l2cset = 0; l2cset < L2C_SET; l2cset++)
+                        for (int l2cway = 0; l2cway < L2C_WAY; l2cway++)
+                        {
+                            if (ooo_cpu[i].L2C.block[l2cset][l2cway].tag == ooo_cpu[i].L1I.block[l1iset][l1iway].tag &&
+                                ooo_cpu[i].L2C.block[l2cset][l2cway].full_addr == ooo_cpu[i].L1I.block[l1iset][l1iway].full_addr &&
+                                //ooo_cpu[i].L2C.block[l2cset][l2cway].data == ooo_cpu[i].L1I.block[l1iset][l1iway].data &&
+                                ooo_cpu[i].L2C.block[l2cset][l2cway].valid == 1)
+                            {
+                                match = 1;
+                            }
+                            //cout<<"3";
+                        }
+                    if (!match)
+                    {
+                        cout << "1 FAILED" << endl;
+                    }
+                }
+        //L1D data should be present L2C
+        for (int l1dset = 0; l1dset < L1D_SET; l1dset++)
+            for (int l1dway = 0; l1dway < L1D_WAY; l1dway++)
+                if (ooo_cpu[i].L1D.block[l1dset][l1dway].valid == 1)
+                {
+                    //cout<<"4";
+                    int match = 0;
+                    for (int l2cset = 0; l2cset < L2C_SET; l2cset++)
+                        for (int l2cway = 0; l2cway < L2C_WAY; l2cway++)
+                        {
+                            if (ooo_cpu[i].L2C.block[l2cset][l2cway].tag == ooo_cpu[i].L1D.block[l1dset][l1dway].tag &&
+                                ooo_cpu[i].L2C.block[l2cset][l2cway].full_addr == ooo_cpu[i].L1D.block[l1dset][l1dway].full_addr &&
+                                //ooo_cpu[i].L2C.block[l2cset][l2cway].data == ooo_cpu[i].L1D.block[l1dset][l1dway].data &&
+                                ooo_cpu[i].L2C.block[l2cset][l2cway].valid == 1)
+                                match = 1;
+                            //cout<<"5";
+                        }
+                    if (!match)
+                    {
+                        cout << "2 FAILED" << endl;
+                    }
+                }
+        //L2C data should be present in LLC
+        for (int l2cset = 0; l2cset < L2C_SET; l2cset++)
+            for (int l2cway = 0; l2cway < L2C_WAY; l2cway++)
+                if (ooo_cpu[i].L2C.block[l2cset][l2cway].valid == 1)
+                {
+                    //cout<<"5";
+                    int match = 0;
+                    for (int llcset = 0; llcset < LLC_SET; llcset++)
+                        for (int llcway = 0; llcway < LLC_WAY; llcway++)
+                            if (ooo_cpu[i].L2C.block[l2cset][l2cway].tag == uncore.LLC.block[llcset][llcway].tag &&
+                                ooo_cpu[i].L2C.block[l2cset][l2cway].full_addr == uncore.LLC.block[llcset][llcway].full_addr &&
+                                //ooo_cpu[i].L2C.block[l2cset][l2cway].data == uncore.LLC.block[llcset][llcway].data &&
+                                uncore.LLC.block[llcset][llcway].valid == 1)
+                            {
+                                match = 1;
+                                //		cout<<"6";
+                            }
+                    if (!match)
+                    {
+                        cout << "3 FAILED" << endl;
+                    }
+                }
+    }
 }

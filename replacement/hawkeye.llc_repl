@@ -63,6 +63,10 @@ OPTgen perset_optgen[LLC_SETS]; // per-set occupancy vectors; we only use 64 of 
 #define SAMPLER_SETS SAMPLED_CACHE_SIZE/SAMPLER_WAYS
 vector<map<uint64_t, ADDR_INFO> > addr_history; // Sampler
 
+// sacusa: structures for additional data
+uint64_t num_of_evictions;
+uint64_t num_of_cache_friendly_evictions;
+
 // initialize replacement state
 void CACHE::llc_initialize_replacement()
 {
@@ -84,18 +88,26 @@ void CACHE::llc_initialize_replacement()
     prefetch_predictor = new HAWKEYE_PC_PREDICTOR();
 
     cout << "Initialize Hawkeye state" << endl;
+
+    // sacusa
+    num_of_evictions = 0;
+    num_of_cache_friendly_evictions = 0;
 }
 
 // find replacement victim
 // return value should be 0 ~ 15 or 16 (bypass)
 uint32_t CACHE::llc_find_victim (uint32_t cpu, uint64_t instr_id, uint32_t set, const BLOCK *current_set, uint64_t PC, uint64_t paddr, uint32_t type)
 {
+    // sacusa: data to compute percentage of cache friendly evictions
+    num_of_evictions++;
+
     // look for the maxRRPV line
     for (uint32_t i=0; i<LLC_WAYS; i++)
         if (rrpv[set][i] == maxRRPV)
             return i;
 
     //If we cannot find a cache-averse line, we evict the oldest cache-friendly line
+    num_of_cache_friendly_evictions++;
     uint32_t max_rrip = 0;
     int32_t lru_victim = -1;
     for (uint32_t i=0; i<LLC_WAYS; i++)
@@ -304,16 +316,21 @@ void CACHE::llc_update_replacement_state (uint32_t cpu, uint32_t set, uint32_t w
 void CACHE::llc_replacement_final_stats()
 {
     unsigned int hits = 0;
-    unsigned int accesses = 0;
+    unsigned int demand_accesses = 0;
+    unsigned int prefetch_accesses = 0;
     for(unsigned int i=0; i<LLC_SETS; i++)
     {
-        accesses += perset_optgen[i].access;
+        demand_accesses += perset_optgen[i].demand_access;
+        prefetch_accesses += perset_optgen[i].prefetch_access;
         hits += perset_optgen[i].get_num_opt_hits();
     }
 
-    std::cout << "OPTgen accesses: " << accesses << std::endl;
+    std::cout << "OPTgen demand accesses: " << demand_accesses << std::endl;
+    std::cout << "OPTgen prefetch accesses: " << prefetch_accesses << std::endl;
     std::cout << "OPTgen hits: " << hits << std::endl;
-    std::cout << "OPTgen hit rate: " << 100*(double)hits/(double)accesses << std::endl;
+    std::cout << "OPTgen hit rate: " << 100*(double)hits/((double)demand_accesses + (double)prefetch_accesses) << std::endl;
+    std::cout << "Number of evictions: " << num_of_evictions << std::endl;
+    std::cout << "Number of cache-friendly evictions: " << num_of_cache_friendly_evictions << std::endl;
 
     cout << endl << endl;
     return;

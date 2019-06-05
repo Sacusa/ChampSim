@@ -58,7 +58,8 @@ struct OPTgen
 
     uint64_t num_cache;
     uint64_t num_dont_cache;
-    uint64_t access;
+    uint64_t demand_access;
+    uint64_t prefetch_access;
 
     uint64_t CACHE_SIZE;
 
@@ -66,19 +67,21 @@ struct OPTgen
     {
         num_cache = 0;
         num_dont_cache = 0;
-        access = 0;
+        demand_access = 0;
+        prefetch_access = 0;
         CACHE_SIZE = size;
         liveness_history.resize(OPTGEN_VECTOR_SIZE, 0);
     }
 
     void add_access(uint64_t curr_quanta)
     {
-        access++;
+        demand_access++;
         liveness_history[curr_quanta] = 0;
     }
 
     void add_prefetch(uint64_t curr_quanta)
     {
+        prefetch_access++;
         liveness_history[curr_quanta] = 0;
     }
 
@@ -121,7 +124,7 @@ struct OPTgen
     {
         return num_cache;
 
-        uint64_t num_opt_misses = access - num_cache;
+        uint64_t num_opt_misses = demand_access - num_cache;
         return num_opt_misses;
     }
 };

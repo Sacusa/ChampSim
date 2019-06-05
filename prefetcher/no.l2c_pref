@@ -19,3 +19,8 @@ void CACHE::l2c_prefetcher_final_stats()
 {
 
 }
+
+void CACHE::l2c_prefetcher_reset_stats()
+{
+    
+}

@@ -2,6 +2,7 @@
 #define CACHE_H
 
 #include <map>
+#include <set>
 #include "memory_class.h"
 
 // PAGE
@@ -97,14 +98,36 @@ class CACHE : public MEMORY {
              pf_useless,
              pf_fill;
     
+    // a global value to keep track of demand access #
+    uint64_t total_access_count;
+
     // reuse distance stats
-    uint64_t total_access_count;   // total demand accesses to the cache
-    map <uint64_t, uint64_t> block_access_count;    // number of times a block is accessed
-    map <uint64_t, uint64_t> block_reuse_distance;  // sum of all reuse distances of a block
-    map <uint64_t, uint64_t> block_last_access;     // total_access_count value the last time a block was accessed
+    vector <uint64_t> recent_accesses;
+    uint64_t num_of_unique_references;
+    const uint8_t num_of_reuse_distance_bins = 11;
+    uint64_t *reuse_distance_bins;
 
     // access pattern stats
     map <uint64_t, uint64_t> access_pattern;  // sequence of demand access addresses
+
+    // offset pattern stats
+    vector <int64_t> offset_pattern;
+    uint64_t last_address;
+    bool is_first_access;
+
+    // stride distribution stats
+    const uint8_t stride_history_length = 3;
+    const uint8_t num_of_stride_distribution_bins = 9;
+    uint8_t   num_global_strides;
+    uint64_t  last_global_address;
+    uint64_t *global_stride_history;
+    int       global_stride_history_index;
+    map<uint64_t, uint8_t>   num_local_strides;
+    map<uint64_t, uint64_t>  last_local_address;
+    map<uint64_t, uint64_t*> local_stride_history;
+    map<uint64_t, int>       local_stride_history_index;
+    uint64_t *local_stride_distribution;
+    uint64_t *global_stride_distribution;
 
     // queues
     PACKET_QUEUE WQ{NAME + "_WQ", WQ_SIZE}, // write queue
@@ -163,6 +186,18 @@ class CACHE : public MEMORY {
         pf_fill = 0;
 
         total_access_count = 0;
+
+        num_of_unique_references = 0;
+        reuse_distance_bins = new uint64_t[num_of_reuse_distance_bins] {};
+
+        is_first_access = true;
+
+        num_global_strides = 0;
+        last_global_address = 0;
+        global_stride_history = new uint64_t[stride_history_length] {};
+        global_stride_history_index = 0;
+        local_stride_distribution = new uint64_t[num_of_stride_distribution_bins] {};
+        global_stride_distribution = new uint64_t[num_of_stride_distribution_bins] {};
     };
 
     // destructor
@@ -227,6 +262,16 @@ class CACHE : public MEMORY {
     
     uint8_t invalidate_and_return_data(uint32_t cpu, uint64_t address, uint64_t *data, int *data_cache),
             higher_level_dirty(uint64_t address);
+    
+    void collect_reuse_distance(uint64_t block_address);
+    void collect_stride_distribution(uint64_t ip, uint64_t block_address);
+    void collect_offset_pattern(uint64_t block_address);
+    uint8_t get_reuse_distance_bin(uint16_t reuse_distance);
+    uint8_t get_stride_bin(uint64_t stride);
+
+    void l2c_prefetcher_reset_stats();
+    
+    void check_inclusive();
 };
 
 #endif

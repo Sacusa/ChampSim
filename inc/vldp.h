@@ -1,6 +1,7 @@
 #ifndef VLDP_H
 #define VLDP_H
 
+#include <algorithm>  // added by sacusa
 #include "cache.h"
 
 // L2 VLDP

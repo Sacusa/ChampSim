@@ -525,3 +525,8 @@ uint32_t GLOBAL_REGISTER::check_entry(uint32_t page_offset)
 
     return max_conf_way;
 }
+
+void CACHE::l2c_prefetcher_reset_stats()
+{
+    
+}

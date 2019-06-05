@@ -35,42 +35,46 @@ void record_roi_stats(uint32_t cpu, CACHE *cache)
 
 void print_reuse_stats(CACHE *cache)
 {
-    cout << cache->NAME << " REUSE DISTANCE OF EACH BLOCK ADDRESS" << endl;
+    cout << cache->NAME << " REUSE DISTANCE BINS" << endl;
 
-    uint64_t avg_reuse_distance = 0, min_reuse_distance = 100000, max_reuse_distance = 0, num_sets = 0;
-    map <uint64_t, uint64_t> :: iterator dist_itr;
+    uint8_t power_of_2 = 9;
 
-    for (dist_itr = cache->block_reuse_distance.begin(); dist_itr != cache->block_reuse_distance.end(); ++dist_itr) {
-        uint64_t reuse_distance = dist_itr->second / cache->block_access_count.at(dist_itr->first);
-        avg_reuse_distance += reuse_distance;
-        ++num_sets;  // to calculate average reuse distance of the entire cache
-
-        cout << "  " << cache->NAME << " REUSE DISTANCE ADDRESS: " << setw(16) << dist_itr->first << "  " << setw(6) << reuse_distance << endl;
-
-        if (reuse_distance < min_reuse_distance) {
-            min_reuse_distance = reuse_distance;
-        }
-        if (reuse_distance > max_reuse_distance) {
-            max_reuse_distance = reuse_distance;
-        }
+    for (uint8_t i = 0; i < cache->num_of_reuse_distance_bins; i++) {
+        cout << "  BIN " << (uint64_t)(pow(2, power_of_2)) << " : " << cache->reuse_distance_bins[i] << endl;
+        power_of_2++;
     }
 
-    if (num_sets > 0) {
-        avg_reuse_distance /= num_sets;
-    }
-    cout << cache->NAME;
-    cout << " REUSE DISTANCE  AVG: " << setw(6) << avg_reuse_distance;
-    cout << "  MIN: " << setw(6) << min_reuse_distance;
-    cout << "  MAX: " << setw(6) << max_reuse_distance << endl;
+    cout << "  NUMBER OF UNIQUE REFERENCES : " << cache->num_of_unique_references << endl;
 }
 
 void print_access_pattern(CACHE *cache)
 {
     cout << cache->NAME << " ACCESS PATTERN" << endl;
-    map <uint64_t, uint64_t> :: iterator ap_itr;
-
-    for (ap_itr = cache->access_pattern.begin(); ap_itr != cache->access_pattern.end(); ++ap_itr) {
+    
+    for (map <uint64_t, uint64_t> :: iterator ap_itr = cache->access_pattern.begin(); ap_itr != cache->access_pattern.end(); ++ap_itr) {
         cout << "  " << cache->NAME << " ACCESS PATTERN COUNT: " << setw(16) << ap_itr->first << "  " << setw(16) << ap_itr->second << endl;
+    }
+}
+
+void print_offset_pattern(CACHE *cache)
+{
+    cout << cache->NAME << " OFFSET PATTERN" << endl;
+    
+    for (vector <int64_t> :: iterator op_itr = cache->offset_pattern.begin(); op_itr != cache->offset_pattern.end(); ++op_itr) {
+        cout << "  " << cache->NAME << " OFFSET: " << *op_itr << endl;
+    }
+}
+
+void print_stride_distribution(CACHE *cache)
+{
+    cout << cache->NAME << " STRIDE DISTRIBUTION" << endl;
+
+    for (uint8_t i = 0; i < cache->num_of_stride_distribution_bins; i++) {
+        cout << "  LOCAL STRIDE BIN " << (unsigned int)i << " : " << cache->local_stride_distribution[i] << endl;
+    }
+
+    for (uint8_t i = 0; i < cache->num_of_stride_distribution_bins; i++) {
+        cout << "  GLOBAL STRIDE BIN " << (unsigned int)i << " : " << cache->global_stride_distribution[i] << endl;
     }
 }
 
@@ -101,6 +105,7 @@ void print_roi_stats(uint32_t cpu, CACHE *cache)
 
     cout << cache->NAME;
     cout << " PREFETCH  REQUESTED: " << setw(10) << cache->pf_requested << "  ISSUED: " << setw(10) << cache->pf_issued;
+    cout << "  FILLED: " << setw(10) << cache->pf_fill;
     cout << "  USEFUL: " << setw(10) << cache->pf_useful << "  USELESS: " << setw(10) << cache->pf_useless << endl;
 
     #ifdef PRINT_REUSE_STATS
@@ -111,6 +116,12 @@ void print_roi_stats(uint32_t cpu, CACHE *cache)
         if (!((cache->cache_type == IS_L1I) || (cache->cache_type == IS_ITLB))) {
             print_access_pattern(cache);
         }
+    #endif
+    #ifdef PRINT_OFFSET_PATTERN
+        print_offset_pattern(cache);
+    #endif
+    #ifdef PRINT_STRIDE_DISTRIBUTION
+        print_stride_distribution(cache);
     #endif
 }
 
@@ -196,12 +207,37 @@ void reset_cache_stats(uint32_t cpu, CACHE *cache)
     cache->WQ.FORWARD = 0;
     cache->WQ.FULL = 0;
 
+    // ##############################################
+    // the following lines have been added by sacusa
+    // ##############################################
+    
     cache->total_access_count = 0;
-    cache->block_access_count.clear();
-    cache->block_reuse_distance.clear();
-    cache->block_last_access.clear();
+
+    cache->recent_accesses.clear();
+    cache->num_of_unique_references = 0;
+    free(cache->reuse_distance_bins);
+    cache->reuse_distance_bins = new uint64_t[cache->num_of_reuse_distance_bins] {};
 
     cache->access_pattern.clear();
+    
+    cache->offset_pattern.clear();
+    cache->is_first_access = true;
+
+    cache->num_global_strides = 0;
+    cache->last_global_address = 0;
+    free(cache->global_stride_history);
+    cache->global_stride_history = new uint64_t[cache->stride_history_length] {};
+    cache->global_stride_history_index = 0;
+    cache->num_local_strides.clear();
+    cache->last_local_address.clear();
+    cache->local_stride_history.clear();
+    cache->local_stride_history_index.clear();
+    free(cache->local_stride_distribution);
+    free(cache->global_stride_distribution);
+    cache->local_stride_distribution = new uint64_t[cache->num_of_stride_distribution_bins] {};
+    cache->global_stride_distribution = new uint64_t[cache->num_of_stride_distribution_bins] {};
+
+    cache->l2c_prefetcher_reset_stats();
 }
 
 void finish_warmup()
@@ -938,6 +974,9 @@ int main(int argc, char** argv)
     uncore.LLC.llc_replacement_final_stats();
     print_dram_stats();
 #endif
+
+    // check inclusive policy
+    // ooo_cpu[0].L1D.check_inclusive();
 
     return 0;
 }

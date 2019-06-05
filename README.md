@@ -5,7 +5,7 @@
 
 # Clone ChampSim repository
 ```
-git clone https://github.com/ChampSim/ChampSim.git
+git clone https://github.com/Sacusa/ChampSim.git
 ```
 
 # Compile
@@ -15,11 +15,13 @@ For example, `./build_champsim.sh bimodal no no lru 1 ni no no` builds a single-
 ```
 $ ./build_champsim.sh bimodal no no lru 1 ni no no
 
-$ ./build_champsim.sh ${BRANCH} ${L1D_PREFETCHER} ${L2C_PREFETCHER} ${LLC_REPLACEMENT} ${NUM_CORE} ${CACHE_CONFIG} ${PRINT_REUSE_STATS} ${PRINT_ACCESS_PATTERN}
+$ ./build_champsim.sh ${BRANCH} ${L1D_PREFETCHER} ${L2C_PREFETCHER} ${LLC_REPLACEMENT} ${NUM_CORE} ${CACHE_CONFIG} ${PRINT_REUSE_STATS} ${PRINT_ACCESS_PATTERN} ${PRINT_OFFSET_PATTERN} ${PRINT_STRIDE_DISTRIBUTION}
 
 ${CACHE_CONFIG}: ni, in or ex
-${PRINT_REUSE_STATS}: reuse or no
+${PRINT_REUSE_STATS}: rd or no
 ${PRINT_ACCESS_PATTERN}: ap or no
+${PRINT_OFFSET_PATTERN}: op or no
+${PRINT_STRIDE_DISTRIBUTION}: sd or no
 ```
 
 # Run simulation

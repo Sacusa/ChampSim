@@ -8,6 +8,8 @@ NUM_CORE=$5              # tested up to 8-core system
 CACHE_CONFIG=$6          # ni, in, ex
 PRINT_REUSE_STATS=$7     # print reuse distance stats
 PRINT_ACCESS_PATTERN=$8  # print sequence of demand access addresses
+PRINT_OFFSET_PATTERN=$9  # print sequence of offsets in demand accesses
+PRINT_STRIDE_DISTRIBUTION=${10}
 
 ############## Some useful macros ###############
 BOLD=$(tput bold)
@@ -92,8 +94,10 @@ fi
 # Check for additional print options
 MF_PRINT_REUSE_STATS=0
 MF_PRINT_ACCESS_PATTERN=0
+MF_PRINT_OFFSET_PATTERN=0
+MF_PRINT_STRIDE_DISTRIBUTION=0
 
-if [ "$PRINT_REUSE_STATS" = "reuse" ]
+if [ "$PRINT_REUSE_STATS" = "rd" ]
 then
 	MF_PRINT_REUSE_STATS=1
 elif [ "$PRINT_REUSE_STATS" = "no" ]
@@ -103,6 +107,7 @@ else
 	echo "Invalid option for PRINT_REUSE_STATS"
 	exit 1
 fi
+
 if [ "$PRINT_ACCESS_PATTERN" = "ap" ]
 then
 	MF_PRINT_ACCESS_PATTERN=1
@@ -114,11 +119,36 @@ else
 	exit 1
 fi
 
+if [ "$PRINT_OFFSET_PATTERN" = "op" ]
+then
+	MF_PRINT_OFFSET_PATTERN=1
+elif [ "$PRINT_OFFSET_PATTERN" = "no" ]
+then
+	MF_PRINT_OFFSET_PATTERN=0
+else
+	echo "Invalid option for PRINT_OFFSET_PATTERN"
+	exit 1
+fi
+
+if [ "$PRINT_STRIDE_DISTRIBUTION" = "sd" ]
+then
+	MF_PRINT_STRIDE_DISTRIBUTION=1
+elif [ "$PRINT_STRIDE_DISTRIBUTION" = "no" ]
+then
+	MF_PRINT_STRIDE_DISTRIBUTION=0
+else
+	echo "Invalid option for PRINT_STRIDE_DISTRIBUTION"
+	exit 1
+fi
+
 # Build
 mkdir -p bin
 rm -f bin/champsim
 make clean
-make cache_config=$MF_CACHE_CONFIG print_reuse_stats=$MF_PRINT_REUSE_STATS print_access_pattern=$MF_PRINT_ACCESS_PATTERN
+make cache_config=$MF_CACHE_CONFIG print_reuse_stats=$MF_PRINT_REUSE_STATS \
+	 print_access_pattern=$MF_PRINT_ACCESS_PATTERN \
+	 print_offset_pattern=$MF_PRINT_OFFSET_PATTERN \
+	 print_stride_distribution=$MF_PRINT_STRIDE_DISTRIBUTION
 
 # Sanity check
 echo ""
@@ -134,7 +164,7 @@ echo "L1D Prefetcher: ${L1D_PREFETCHER}"
 echo "L2C Prefetcher: ${L2C_PREFETCHER}"
 echo "LLC Replacement: ${LLC_REPLACEMENT}"
 echo "Cores: ${NUM_CORE}"
-BINARY_NAME="${BRANCH}-${L1D_PREFETCHER}-${L2C_PREFETCHER}-${LLC_REPLACEMENT}-${NUM_CORE}core-${CACHE_CONFIG}-${PRINT_REUSE_STATS}-${PRINT_ACCESS_PATTERN}"
+BINARY_NAME="${BRANCH}-${L1D_PREFETCHER}-${L2C_PREFETCHER}-${LLC_REPLACEMENT}-${NUM_CORE}core-${CACHE_CONFIG}-${PRINT_REUSE_STATS}-${PRINT_ACCESS_PATTERN}-${PRINT_OFFSET_PATTERN}-${PRINT_STRIDE_DISTRIBUTION}"
 echo "Binary: bin/${BINARY_NAME}${NORMAL}"
 echo ""
 mv bin/champsim bin/${BINARY_NAME}
