@@ -11,3 +11,5 @@ prefetcher/bo.l2c_pref
 prefetcher/isb_new.l2c_pref
 prefetcher/sandbox.l2c_pref
 prefetcher/vldp.l2c_pref
+prabh_vishad_data/
+test.cc
