@@ -3,6 +3,13 @@
 
 #include "memory_class.h"
 
+// sacusa: number of bits to shift the address by for bank mask
+// note: the original implementation uses LSBs of L2 tag, but we shall use LSBs of L3 tag
+//       hence, this number assumes an L3 cache with 2048 sets per way
+// note2: we don't need to take block offset into account, since the field "address"
+//        already represents the block address at each level
+#define MASK_SHIFT 12
+
 // DRAM configuration
 #define DRAM_CHANNEL_WIDTH 8 // 8B
 #define DRAM_WQ_SIZE 48
