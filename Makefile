@@ -16,7 +16,8 @@ libDir =
 def_print_reuse_stats =
 def_print_access_pattern =
 def_print_offset_pattern =
-def_print_stride_distribution=
+def_print_stride_distribution =
+def_print_mlp =
 def_inclusive_cache =
 def_exclusive_cache =
 
@@ -45,6 +46,10 @@ ifeq ($(print_stride_distribution),1)
 	def_print_stride_distribution=-D PRINT_STRIDE_DISTRIBUTION
 endif
 
+ifeq ($(print_mlp),1)
+	def_print_mlp=-D PRINT_MLP
+endif
+
 ifeq ($(cache_config),1)
 	def_inclusive_cache=-D INCLUSIVE_CACHE
 endif
@@ -56,7 +61,7 @@ endif
 inc := $(addprefix -I,$(inc))
 libs := $(addprefix -l,$(libs))
 libDir := $(addprefix -L,$(libDir))
-CFlags += -c $(debug) $(inc) $(libDir) $(libs) $(def_print_reuse_stats) $(def_print_access_pattern) $(def_print_offset_pattern) $(def_inclusive_cache) $(def_exclusive_cache) $(def_print_stride_distribution)
+CFlags += -c $(debug) $(inc) $(libDir) $(libs) $(def_print_reuse_stats) $(def_print_access_pattern) $(def_print_offset_pattern) $(def_print_stride_distribution) $(def_print_mlp) $(def_inclusive_cache) $(def_exclusive_cache)
 sources := $(shell find $(srcDir) -name '*.$(srcExt)')
 srcDirs := $(shell find . -name '*.$(srcExt)' -exec dirname {} \; | uniq)
 objects := $(patsubst %.$(srcExt),$(objDir)/%.o,$(sources))

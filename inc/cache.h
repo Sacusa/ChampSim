@@ -129,6 +129,13 @@ class CACHE : public MEMORY {
     uint64_t *local_stride_distribution;
     uint64_t *global_stride_distribution;
 
+    // memory level parallelism
+    bool is_leading_load_ongoing;
+    uint64_t leading_load_address;
+    uint64_t total_loads_to_mem;
+    uint64_t total_leading_loads;
+    uint64_t total_parallel_loads;
+
     // queues
     PACKET_QUEUE WQ{NAME + "_WQ", WQ_SIZE}, // write queue
                  RQ{NAME + "_RQ", RQ_SIZE}, // read queue
@@ -198,6 +205,11 @@ class CACHE : public MEMORY {
         global_stride_history_index = 0;
         local_stride_distribution = new uint64_t[num_of_stride_distribution_bins] {};
         global_stride_distribution = new uint64_t[num_of_stride_distribution_bins] {};
+
+        is_leading_load_ongoing = false;
+        total_loads_to_mem = 0;
+        total_leading_loads = 0;
+        total_parallel_loads = 0;
     };
 
     // destructor

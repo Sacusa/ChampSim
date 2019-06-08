@@ -10,6 +10,7 @@ PRINT_REUSE_STATS=$7     # print reuse distance stats
 PRINT_ACCESS_PATTERN=$8  # print sequence of demand access addresses
 PRINT_OFFSET_PATTERN=$9  # print sequence of offsets in demand accesses
 PRINT_STRIDE_DISTRIBUTION=${10}
+PRINT_MLP=${11}
 
 ############## Some useful macros ###############
 BOLD=$(tput bold)
@@ -96,6 +97,7 @@ MF_PRINT_REUSE_STATS=0
 MF_PRINT_ACCESS_PATTERN=0
 MF_PRINT_OFFSET_PATTERN=0
 MF_PRINT_STRIDE_DISTRIBUTION=0
+MF_PRINT_MLP=0
 
 if [ "$PRINT_REUSE_STATS" = "rd" ]
 then
@@ -141,6 +143,17 @@ else
 	exit 1
 fi
 
+if [ "$PRINT_MLP" = "mlp" ]
+then
+	MF_PRINT_MLP=1
+elif [ "$PRINT_MLP" = "no" ]
+then
+	MF_PRINT_MLP=0
+else
+	echo "Invalid option for PRINT_MLP"
+	exit 1
+fi
+
 # Build
 mkdir -p bin
 rm -f bin/champsim
@@ -148,7 +161,8 @@ make clean
 make cache_config=$MF_CACHE_CONFIG print_reuse_stats=$MF_PRINT_REUSE_STATS \
 	 print_access_pattern=$MF_PRINT_ACCESS_PATTERN \
 	 print_offset_pattern=$MF_PRINT_OFFSET_PATTERN \
-	 print_stride_distribution=$MF_PRINT_STRIDE_DISTRIBUTION
+	 print_stride_distribution=$MF_PRINT_STRIDE_DISTRIBUTION \
+	 print_mlp=$MF_PRINT_MLP
 
 # Sanity check
 echo ""
@@ -164,7 +178,7 @@ echo "L1D Prefetcher: ${L1D_PREFETCHER}"
 echo "L2C Prefetcher: ${L2C_PREFETCHER}"
 echo "LLC Replacement: ${LLC_REPLACEMENT}"
 echo "Cores: ${NUM_CORE}"
-BINARY_NAME="${BRANCH}-${L1D_PREFETCHER}-${L2C_PREFETCHER}-${LLC_REPLACEMENT}-${NUM_CORE}core-${CACHE_CONFIG}-${PRINT_REUSE_STATS}-${PRINT_ACCESS_PATTERN}-${PRINT_OFFSET_PATTERN}-${PRINT_STRIDE_DISTRIBUTION}"
+BINARY_NAME="${BRANCH}-${L1D_PREFETCHER}-${L2C_PREFETCHER}-${LLC_REPLACEMENT}-${NUM_CORE}core-${CACHE_CONFIG}-${PRINT_REUSE_STATS}-${PRINT_ACCESS_PATTERN}-${PRINT_OFFSET_PATTERN}-${PRINT_STRIDE_DISTRIBUTION}-${PRINT_MLP}"
 echo "Binary: bin/${BINARY_NAME}${NORMAL}"
 echo ""
 mv bin/champsim bin/${BINARY_NAME}

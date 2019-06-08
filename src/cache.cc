@@ -179,6 +179,12 @@ void CACHE::handle_fill()
             if (cache_type == IS_LLC) {
                 llc_update_replacement_state(fill_cpu, set, way, MSHR.entry[mshr_index].full_addr, MSHR.entry[mshr_index].ip, block[set][way].full_addr, MSHR.entry[mshr_index].type, 0);
 
+#ifdef PRINT_MLP
+                // update MLP data
+                if (is_leading_load_ongoing && (leading_load_address == MSHR.entry[mshr_index].full_addr)) {
+                    is_leading_load_ongoing = false;
+                }
+#endif
             }
             else
                 update_replacement_state(fill_cpu, set, way, MSHR.entry[mshr_index].full_addr, MSHR.entry[mshr_index].ip, block[set][way].full_addr, MSHR.entry[mshr_index].type, 0);
@@ -637,6 +643,22 @@ void CACHE::handle_read()
                         // update access pattern (except for L1I and ITLB)
                         if (!((cache_type == IS_L1I) || (cache_type == IS_ITLB))) {
                             access_pattern.insert(pair <uint64_t, uint64_t> (total_access_count, RQ.entry[index].address));
+                        }
+                    }
+#endif
+
+#ifdef PRINT_MLP
+                    // collect MLP at LLC
+                    if (cache_type == IS_LLC) {
+                        total_loads_to_mem++;
+
+                        if (is_leading_load_ongoing) {
+                            total_parallel_loads++;
+                        }
+                        else {
+                            is_leading_load_ongoing = true;
+                            leading_load_address = RQ.entry[index].full_addr;
+                            total_leading_loads++;
                         }
                     }
 #endif

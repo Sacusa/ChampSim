@@ -78,6 +78,16 @@ void print_stride_distribution(CACHE *cache)
     }
 }
 
+void print_mlp(CACHE *cache)
+{
+    if (cache->cache_type == IS_LLC) {
+        cout << cache->NAME << " MLP" << endl;
+        cout << "  TOTAL LOADS TO MEM   : " << cache->total_loads_to_mem << endl;
+        cout << "  TOTAL LEADING LOADS  : " << cache->total_leading_loads << endl;
+        cout << "  TOTAL PARALLEL LOADS : " << cache-> total_parallel_loads << endl;
+    }
+}
+
 void print_roi_stats(uint32_t cpu, CACHE *cache)
 {
     uint64_t TOTAL_ACCESS = 0, TOTAL_HIT = 0, TOTAL_MISS = 0;
@@ -122,6 +132,9 @@ void print_roi_stats(uint32_t cpu, CACHE *cache)
     #endif
     #ifdef PRINT_STRIDE_DISTRIBUTION
         print_stride_distribution(cache);
+    #endif
+    #ifdef PRINT_MLP
+        print_mlp(cache);
     #endif
 }
 
@@ -213,16 +226,20 @@ void reset_cache_stats(uint32_t cpu, CACHE *cache)
     
     cache->total_access_count = 0;
 
+    // reset reuse distance
     cache->recent_accesses.clear();
     cache->num_of_unique_references = 0;
     free(cache->reuse_distance_bins);
     cache->reuse_distance_bins = new uint64_t[cache->num_of_reuse_distance_bins] {};
 
+    // reset access pattern
     cache->access_pattern.clear();
     
+    // reset offset pattern
     cache->offset_pattern.clear();
     cache->is_first_access = true;
 
+    // reset stride distribution
     cache->num_global_strides = 0;
     cache->last_global_address = 0;
     free(cache->global_stride_history);
@@ -236,6 +253,12 @@ void reset_cache_stats(uint32_t cpu, CACHE *cache)
     free(cache->global_stride_distribution);
     cache->local_stride_distribution = new uint64_t[cache->num_of_stride_distribution_bins] {};
     cache->global_stride_distribution = new uint64_t[cache->num_of_stride_distribution_bins] {};
+
+    // reset mlp
+    cache->is_leading_load_ongoing = false;
+    cache->total_loads_to_mem = 0;
+    cache->total_leading_loads = 0;
+    cache->total_parallel_loads = 0;
 
     cache->l2c_prefetcher_reset_stats();
 }
