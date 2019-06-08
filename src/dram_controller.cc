@@ -629,7 +629,7 @@ uint32_t MEMORY_CONTROLLER::dram_get_channel(uint64_t address)
     if (LOG2_DRAM_CHANNELS == 0)
         return 0;
 
-    int shift = LOG2_DRAM_RANKS + LOG2_DRAM_BANKS + LOG2_DRAM_COLUMNS;
+    int shift = LOG2_DRAM_COLUMNS_HI + LOG2_DRAM_RANKS + LOG2_DRAM_BANKS + LOG2_DRAM_COLUMNS_LO;
 
     return (uint32_t) (address >> shift) & (DRAM_CHANNELS - 1);
 }
@@ -639,7 +639,7 @@ uint32_t MEMORY_CONTROLLER::dram_get_bank(uint64_t address)
     if (LOG2_DRAM_BANKS == 0)
         return 0;
 
-    int shift = LOG2_DRAM_COLUMNS;
+    int shift = LOG2_DRAM_COLUMNS_LO;
     uint32_t mask = DRAM_BANKS - 1;
 
     uint32_t base_index = (address >> shift) & mask;
@@ -653,9 +653,11 @@ uint32_t MEMORY_CONTROLLER::dram_get_column(uint64_t address)
     if (LOG2_DRAM_COLUMNS == 0)
         return 0;
 
-    int shift = 0;
+    int shift = LOG2_DRAM_RANKS + LOG2_DRAM_BANKS + LOG2_DRAM_COLUMNS_LO;
+    uint32_t column_lo = address & (DRAM_COLUMNS_LO - 1);
+    uint32_t column_hi = (address >> shift) & (DRAM_COLUMNS_HI - 1);
 
-    return (uint32_t) (address >> shift) & (DRAM_COLUMNS - 1);
+    return ((column_hi << LOG2_DRAM_COLUMNS_LO) + column_lo);
 }
 
 uint32_t MEMORY_CONTROLLER::dram_get_rank(uint64_t address)
@@ -663,7 +665,7 @@ uint32_t MEMORY_CONTROLLER::dram_get_rank(uint64_t address)
     if (LOG2_DRAM_RANKS == 0)
         return 0;
 
-    int shift = LOG2_DRAM_BANKS + LOG2_DRAM_COLUMNS;
+    int shift = LOG2_DRAM_BANKS + LOG2_DRAM_COLUMNS_LO;
 
     return (uint32_t) (address >> shift) & (DRAM_RANKS - 1);
 }
@@ -673,7 +675,7 @@ uint32_t MEMORY_CONTROLLER::dram_get_row(uint64_t address)
     if (LOG2_DRAM_ROWS == 0)
         return 0;
 
-    int shift = LOG2_DRAM_CHANNELS + LOG2_DRAM_RANKS + LOG2_DRAM_BANKS + LOG2_DRAM_COLUMNS;
+    int shift = LOG2_DRAM_CHANNELS + LOG2_DRAM_COLUMNS_HI + LOG2_DRAM_RANKS + LOG2_DRAM_BANKS + LOG2_DRAM_COLUMNS_LO;
 
     return (uint32_t) (address >> shift) & (DRAM_ROWS - 1);
 }

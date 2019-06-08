@@ -10,6 +10,13 @@
 //        already represents the block address at each level
 #define MASK_SHIFT 12
 
+// sacusa: these are used for addr3
+// note: this assumes 32 DRAM columns
+#define DRAM_COLUMNS_HI 8
+#define DRAM_COLUMNS_LO 4
+#define LOG2_DRAM_COLUMNS_HI 3
+#define LOG2_DRAM_COLUMNS_LO 2
+
 // DRAM configuration
 #define DRAM_CHANNEL_WIDTH 8 // 8B
 #define DRAM_WQ_SIZE 48
